@@ -1,0 +1,144 @@
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+
+resize();
+window.addEventListener("resize", resize);
+
+const player = {
+    x: canvas.width / 2,
+    y: canvas.height / 2,
+    size: 32,
+    speed: 4,
+    hp: 100,
+    maxHp: 100,
+    level: 1,
+    xp: 0,
+    coins: 0
+};
+
+const keys = {};
+
+window.addEventListener("keydown", e => {
+    keys[e.key.toLowerCase()] = true;
+});
+
+window.addEventListener("keyup", e => {
+    keys[e.key.toLowerCase()] = false;
+});
+
+function update() {
+
+    if (keys["w"] || keys["arrowup"])
+        player.y -= player.speed;
+
+    if (keys["s"] || keys["arrowdown"])
+        player.y += player.speed;
+
+    if (keys["a"] || keys["arrowleft"])
+        player.x -= player.speed;
+
+    if (keys["d"] || keys["arrowright"])
+        player.x += player.speed;
+
+    player.x = Math.max(20, Math.min(canvas.width - 20, player.x));
+    player.y = Math.max(80, Math.min(canvas.height - 20, player.y));
+}
+
+function draw() {
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // chão
+    ctx.fillStyle = "#142b25";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // água
+    ctx.fillStyle = "#164e63";
+
+    for (let x = 0; x < canvas.width; x += 80) {
+        for (let y = 80; y < canvas.height; y += 80) {
+            ctx.fillRect(x + 10, y + 10, 55, 4);
+        }
+    }
+
+    // HUD
+    ctx.fillStyle = "rgba(0,0,0,.7)";
+    ctx.fillRect(0, 0, canvas.width, 70);
+
+    ctx.fillStyle = "white";
+    ctx.font = "18px Arial";
+
+    ctx.fillText(
+        `🌊 LV ${player.level}`,
+        15,
+        27
+    );
+
+    ctx.fillText(
+        `💰 ${player.coins}`,
+        15,
+        52
+    );
+
+    // barra de vida
+    ctx.fillStyle = "#333";
+    ctx.fillRect(110, 18, 180, 18);
+
+    ctx.fillStyle = "#22c55e";
+    ctx.fillRect(
+        110,
+        18,
+        180 * (player.hp / player.maxHp),
+        18
+    );
+
+    ctx.fillStyle = "white";
+    ctx.font = "12px Arial";
+    ctx.fillText(
+        `${player.hp}/${player.maxHp}`,
+        170,
+        32
+    );
+
+    // personagem
+    ctx.fillStyle = "#2563eb";
+    ctx.fillRect(
+        player.x - player.size / 2,
+        player.y - player.size / 2,
+        player.size,
+        player.size
+    );
+
+    ctx.fillStyle = "#bfdbfe";
+    ctx.fillRect(
+        player.x - 10,
+        player.y - 24,
+        20,
+        12
+    );
+
+    // nome
+    ctx.fillStyle = "white";
+    ctx.font = "14px Arial";
+    ctx.textAlign = "center";
+    ctx.fillText(
+        "Tomioka",
+        player.x,
+        player.y - 32
+    );
+
+    ctx.textAlign = "left";
+}
+
+function loop() {
+    update();
+    draw();
+    requestAnimationFrame(loop);
+}
+
+loop();

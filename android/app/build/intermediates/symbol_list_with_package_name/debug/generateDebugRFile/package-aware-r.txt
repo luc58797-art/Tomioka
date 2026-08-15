@@ -1,0 +1,3 @@
+com.tomioka.game
+drawable tomioka_icon
+style AppTheme

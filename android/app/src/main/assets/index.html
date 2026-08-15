@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#050914">
+<title>Aventura Tomioka</title>
+
+<style>
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #050914;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+body {
+    font-family: Arial, sans-serif;
+}
+
+canvas {
+    display: block;
+    width: 100vw;
+    height: 100vh;
+    touch-action: none;
+}
+
+#loading {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 12px;
+    background: radial-gradient(circle at center, #102b45, #050914 70%);
+    color: white;
+    font-size: 24px;
+    font-weight: bold;
+}
+
+#loading small {
+    font-size: 13px;
+    opacity: .6;
+    font-weight: normal;
+}
+
+#startScreen {
+    position: fixed;
+    inset: 0;
+    z-index: 90;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    background: linear-gradient(180deg, rgba(4,15,31,.92), rgba(3,7,18,.98));
+    color: white;
+    text-align: center;
+}
+
+#startScreen h1 {
+    font-size: clamp(30px, 8vw, 58px);
+    margin-bottom: 8px;
+    text-shadow: 0 0 25px rgba(56,189,248,.8);
+}
+
+#startScreen p {
+    opacity: .7;
+    margin-bottom: 22px;
+}
+
+#menuButtons {
+    width: min(360px, 86vw);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.menuButton {
+    width: 100%;
+    border: 2px solid rgba(125,211,252,.7);
+    background: linear-gradient(135deg, #0369a1, #1d4ed8);
+    color: white;
+    padding: 15px 25px;
+    border-radius: 16px;
+    font-size: 17px;
+    font-weight: bold;
+    box-shadow: 0 8px 25px rgba(14,165,233,.22);
+}
+
+.menuButton.secondary {
+    background: rgba(15,23,42,.88);
+    border-color: rgba(148,163,184,.35);
+}
+
+.menuButton.danger {
+    background: rgba(127,29,29,.72);
+    border-color: rgba(248,113,113,.45);
+}
+
+.menuButton:active {
+    transform: scale(.96);
+}
+
+#startButton {
+    border: 2px solid rgba(125,211,252,.8);
+    background: linear-gradient(135deg, #0369a1, #1d4ed8);
+    color: white;
+    padding: 16px 38px;
+    border-radius: 18px;
+    font-size: 18px;
+    font-weight: bold;
+    box-shadow: 0 8px 30px rgba(14,165,233,.3);
+}
+
+#startButton:active {
+    transform: scale(.94);
+}
+
+.hidden {
+    display: none !important;
+}
+
+#rotate-screen {
+    position: fixed;
+    inset: 0;
+    z-index: 99999;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 30px;
+    background:
+        radial-gradient(circle at center, #123b52 0%, #050912 75%);
+    color: white;
+    font-family: Arial, sans-serif;
+}
+
+#rotate-screen .box {
+    max-width: 420px;
+}
+
+#rotate-screen .icon {
+    font-size: 64px;
+    margin-bottom: 15px;
+}
+
+#rotate-screen h1 {
+    font-size: 25px;
+    margin-bottom: 10px;
+}
+
+#rotate-screen p {
+    color: #bae6fd;
+    font-size: 15px;
+}
+
+@media (orientation: portrait) {
+    #rotate-screen {
+        display: flex;
+    }
+}
+
+@media (orientation: landscape) {
+    #rotate-screen {
+        display: none;
+    }
+}
+</style>
+
+<style>
+.menu-box {
+    width: min(520px, 88vw);
+    padding: 32px 28px 24px;
+    border: 1px solid rgba(125,211,252,.35);
+    border-radius: 28px;
+    background:
+        linear-gradient(145deg,
+            rgba(8,25,45,.97),
+            rgba(3,10,24,.98));
+    box-shadow:
+        0 20px 70px rgba(0,0,0,.55),
+        0 0 45px rgba(14,165,233,.12);
+}
+
+.menu-title {
+    font-size: clamp(42px, 10vw, 68px);
+    font-weight: 900;
+    color: #e0f2fe;
+    text-shadow:
+        0 0 15px rgba(56,189,248,.75),
+        0 0 40px rgba(14,165,233,.35);
+}
+
+.menu-subtitle {
+    margin-top: -3px;
+    margin-bottom: 28px;
+    color: #38bdf8;
+    font-size: 14px;
+    font-weight: bold;
+    letter-spacing: 5px;
+}
+
+.menu-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 13px;
+}
+
+.menu-btn {
+    width: 100%;
+    min-height: 58px;
+    border-radius: 17px;
+    color: white;
+    font-size: 17px;
+    font-weight: 800;
+    border: 2px solid transparent;
+    transition: transform .12s, filter .12s;
+}
+
+.menu-btn:active {
+    transform: scale(.96);
+}
+
+.menu-btn.primary {
+    border-color: rgba(125,211,252,.85);
+    background: linear-gradient(135deg, #0369a1, #1d4ed8);
+    box-shadow: 0 8px 28px rgba(14,165,233,.28);
+}
+
+.menu-btn.secondary {
+    border-color: rgba(148,163,184,.4);
+    background: rgba(15,23,42,.9);
+}
+
+.menu-btn.secondary.disabled {
+    opacity: .4;
+}
+
+.save-status {
+    min-height: 20px;
+    margin-top: 15px;
+    color: #7dd3fc;
+    font-size: 12px;
+}
+
+.menu-footer {
+    margin-top: 22px;
+    color: #64748b;
+    font-size: 11px;
+}
+</style>
+
+</head>
+
+<body>
+
+<div id="loading">
+    🌊 AVENTURA TOMIOKA
+    <small>Carregando...</small>
+</div>
+
+<div id="startScreen" class="hidden">
+    <h1>🌊 TOMIOKA</h1>
+
+    <p>
+        Sobreviva. Evolua. Derrote todos.
+    </p>
+
+    <div id="menuButtons">
+
+        <button
+            id="continueButton"
+            class="menuButton"
+            style="display:none">
+            ▶ CONTINUAR
+        </button>
+
+        <button
+            id="startButton"
+            class="menuButton">
+            ⚔ NOVO JOGO
+        </button>
+
+        <button
+            id="deleteSaveButton"
+            class="menuButton danger">
+            🗑 APAGAR SAVE
+        </button>
+
+    </div>
+</div>
+
+
+<div id="rotate-screen">
+    <div class="box">
+        <div class="icon">📱↔️</div>
+        <h1>Vire o celular de lado</h1>
+        <p>
+            A Aventura Tomioka foi preparada para jogar em
+            modo horizontal.
+        </p>
+    </div>
+</div>
+
+<canvas id="game"></canvas>
+
+
+<script src="game.js"></script>
+
+</body>
+</html>

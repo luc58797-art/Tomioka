@@ -1,0 +1,18 @@
+# Gradle
+.gradle/
+**/.gradle/
+build/
+**/build/
+
+# Backups locais
+*.backup*
+*.bak
+*.tmp
+
+# IDE
+.idea/
+*.iml
+
+# Sistema
+.DS_Store
+Thumbs.db

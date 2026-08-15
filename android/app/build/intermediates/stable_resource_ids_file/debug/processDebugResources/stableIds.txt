@@ -1,2 +1,0 @@
-com.tomioka.game:style/AppTheme = 0x7f020000
-com.tomioka.game:drawable/tomioka_icon = 0x7f010000

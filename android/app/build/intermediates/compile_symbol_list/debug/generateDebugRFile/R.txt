@@ -1,2 +1,0 @@
-int drawable tomioka_icon 0x0
-int style AppTheme 0x0

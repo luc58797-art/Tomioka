@@ -1,7 +1,0 @@
-com.tomioka.game.app-pngs-0 /storage/emulated/0/jogo-tomioka/android/app/build/generated/res/pngs/debug
-com.tomioka.game.app-updated_navigation_xml-1 /storage/emulated/0/jogo-tomioka/android/app/build/generated/updated_navigation_xml/debug
-com.tomioka.game.app-packageDebugResources-2 /storage/emulated/0/jogo-tomioka/android/app/build/intermediates/incremental/debug/packageDebugResources/merged.dir
-com.tomioka.game.app-packageDebugResources-3 /storage/emulated/0/jogo-tomioka/android/app/build/intermediates/incremental/debug/packageDebugResources/stripped.dir
-com.tomioka.game.app-debug-4 /storage/emulated/0/jogo-tomioka/android/app/build/intermediates/merged_res/debug/mergeDebugResources
-com.tomioka.game.app-debug-5 /storage/emulated/0/jogo-tomioka/android/app/src/debug/res
-com.tomioka.game.app-main-6 /storage/emulated/0/jogo-tomioka/android/app/src/main/res

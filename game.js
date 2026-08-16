@@ -1,3 +1,88 @@
+
+// ============================================================
+// SPRITES REAIS DO JOGO
+// ============================================================
+
+const tomiokaSprite = new Image();
+tomiokaSprite.src = "images/sprites/optimized/tomioka.png";
+
+const chaoSprite = new Image();
+chaoSprite.src = "images/chao.png";
+
+const inimigosSprite = new Image();
+inimigosSprite.src = "images/sprites/optimized/inimigos.png";
+
+// ============================================================
+// SPRITES INDIVIDUAIS DOS INIMIGOS
+// ============================================================
+//
+// Quando os arquivos existirem, o jogo usa automaticamente:
+//
+// images/sprites/enemies/demonio.png
+// images/sprites/enemies/slime.png
+// images/sprites/enemies/espirito.png
+// images/sprites/enemies/oni.png
+// images/sprites/enemies/rui.png
+// images/sprites/enemies/enmu.png
+// images/sprites/enemies/akaza.png
+// images/sprites/enemies/doma.png
+// images/sprites/enemies/kaigaku.png
+// images/sprites/enemies/kokushibo.png
+//
+// Se o arquivo não existir, usa o spritesheet antigo.
+//
+
+const enemySpriteCache = {};
+
+const enemySpriteFiles = {
+    "Slime": "images/sprites/enemies/slime.png",
+    "Demônio": "images/sprites/enemies/demonio.png",
+    "Espírito": "images/sprites/enemies/espirito.png",
+    "Oni": "images/sprites/enemies/oni.png",
+
+    "Rui": "images/sprites/enemies/rui.png",
+    "Enmu": "images/sprites/enemies/enmu.png",
+    "Akaza": "images/sprites/enemies/akaza.png",
+    "Doma": "images/sprites/enemies/doma.png",
+    "Kaigaku": "images/sprites/enemies/kaigaku.png",
+    "Kokushibo": "images/sprites/enemies/kokushibo.png"
+};
+
+function getEnemySprite(enemy) {
+
+    if (!enemy || !enemy.name)
+        return null;
+
+    const path =
+        enemySpriteFiles[enemy.name];
+
+    if (!path)
+        return null;
+
+    if (!enemySpriteCache[enemy.name]) {
+
+        const img = new Image();
+
+        img.onload = () => {
+            enemySpriteCache[enemy.name] = img;
+        };
+
+        img.onerror = () => {
+            enemySpriteCache[enemy.name] = null;
+        };
+
+        img.src = path;
+
+        // Enquanto carrega, não força outro sprite.
+        return null;
+    }
+
+    return enemySpriteCache[enemy.name];
+}
+
+const espadaSprite = new Image();
+espadaSprite.src = "images/sprites/optimized/espada.png";
+
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d", { alpha: false });
 
@@ -184,6 +269,10 @@ updateTechnique();
 
 const enemies = [];
 const projectiles = [];
+const MAX_PARTICLES = 70;
+const MAX_FLOATING_TEXTS = 35;
+const MAX_SLASH_EFFECTS = 18;
+
 const particles = [];
 const floatingTexts = [];
 const slashEffects = [];
@@ -359,13 +448,15 @@ function distance(a, b) {
 
 function nearestEnemy() {
     let best = null;
-    let bestDist = Infinity;
+    let bestDistSq = Infinity;
 
     for (const e of enemies) {
-        const d = distance(player, e);
+        const dx = player.x - e.x;
+        const dy = player.y - e.y;
+        const distSq = dx * dx + dy * dy;
 
-        if (d < bestDist) {
-            bestDist = d;
+        if (distSq < bestDistSq) {
+            bestDistSq = distSq;
             best = e;
         }
     }
@@ -374,6 +465,9 @@ function nearestEnemy() {
 }
 
 function addParticle(x, y, color, amount = 8, power = 2.5) {
+    const available = Math.max(0, MAX_PARTICLES - particles.length);
+    amount = Math.min(amount, available);
+
     for (let i = 0; i < amount; i++) {
         const a = random(0, Math.PI * 2);
         const s = random(.4, power);
@@ -392,6 +486,9 @@ function addParticle(x, y, color, amount = 8, power = 2.5) {
 }
 
 function text(x, y, value, color = "#fff", size = 14) {
+    if (floatingTexts.length >= MAX_FLOATING_TEXTS)
+        floatingTexts.shift();
+
     floatingTexts.push({
         x,
         y,
@@ -600,6 +697,9 @@ function playWaterSlashSound() {
 
 function useSpecial() {
     if (!started || paused || gameOver) return;
+
+    if (upgradeMenuOpen)
+        return;
     if (player.specialCooldown > 0) return;
 
     selectedTechnique = player.technique;
@@ -680,7 +780,8 @@ function useSpecial() {
     }
 
     // Grande onda de água
-    slashEffects.push({
+    if (slashEffects.length < MAX_SLASH_EFFECTS)
+        slashEffects.push({
         x: player.x + Math.cos(angle) * 35,
         y: player.y + Math.sin(angle) * 35,
         angle,
@@ -778,7 +879,7 @@ function attack() {
         Math.floor(player.mastery * .035);
 
     // DANO DIRETO
-    target.hp -= damage;
+    target.hp -= damage + (player.damageBonus || 0);
     target.hitFlash = 7;
 
     text(
@@ -923,6 +1024,21 @@ function killEnemy(enemy) {
 
 function update() {
 
+    updateShop();
+
+
+    ensurePlayerEnergy();
+
+    // Detecta passagem de fase e entrega um ponto.
+    if (
+        currentStage > lastUpgradeStage &&
+        currentStage > 1
+    ) {
+        lastUpgradeStage = currentStage;
+        giveStageUpgradePoint();
+    }
+
+
     if (stageTransition > 0)
         stageTransition--;
 
@@ -957,7 +1073,10 @@ function update() {
     }
 
     player.x = clamp(player.x, 28, W - 28);
-    player.y = clamp(player.y, 95, H - 28);
+    player.y = clamp(player.y, 125, H - 28);
+
+    // Impede o Tomioka de atravessar objetos do cenário.
+    resolvePlayerScenarioCollision();
 
     if (player.attackCooldown > 0)
         player.attackCooldown--;
@@ -1077,8 +1196,8 @@ function update() {
                     p.x,
                     p.y,
                     "#38bdf8",
-                    10,
-                    3
+                    5,
+                    2.2
                 );
 
                 text(
@@ -1150,119 +1269,2861 @@ function update() {
         cameraShake = 0;
 }
 
-function drawBackground() {
-    const gradient = ctx.createLinearGradient(0, 0, 0, H);
-    gradient.addColorStop(0, "#071827");
-    gradient.addColorStop(.5, "#082a2b");
-    gradient.addColorStop(1, "#061b20");
 
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, W, H);
+// ============================================================
+// OBSTÁCULOS / COLISÃO DO CENÁRIO
+// ============================================================
 
-    ctx.fillStyle = "#0a332d";
-    ctx.fillRect(0, 76, W, H - 76);
 
-    // caminhos
-    ctx.fillStyle = "#12463d";
+// ============================================================
+// MAPAS DE COLISÃO DAS FASES
+// ============================================================
+//
+// Cada obstáculo usa coordenadas normalizadas:
+//
+// circle:
+// x = posição horizontal 0..1
+// y = posição vertical   0..1
+// r = raio proporcional
+//
+// rect:
+// x/y = canto superior esquerdo
+// w/h = tamanho proporcional
+//
+// O mesmo mapa é usado para:
+// 1. desenhar o objeto
+// 2. detectar colisão
+// 3. impedir o movimento
+//
+// ============================================================
 
-    for (let y = 125; y < H; y += 125)
-        ctx.fillRect(0, y, W, 48);
+let DEBUG_COLLISION_MAP = true;
 
-    // água decorativa
-    ctx.strokeStyle = "rgba(56,189,248,.10)";
-    ctx.lineWidth = 2;
 
-    for (let y = 90; y < H; y += 95) {
-        ctx.beginPath();
 
-        for (let x = 0; x <= W; x += 25) {
-            const wave =
-                Math.sin(x * .025 + worldTime * .025 + y) * 3;
+// ============================================================
+// SISTEMA DE EVOLUÇÃO POR FASE
+// ============================================================
 
-            if (x === 0)
-                ctx.moveTo(x, y + wave);
-            else
-                ctx.lineTo(x, y + wave);
-        }
+let upgradePoints = 0;
+let upgradeMenuOpen = false;
+let lastUpgradeStage = 1;
 
-        ctx.stroke();
+// Energia própria do Tomioka.
+// Criada sem quebrar saves antigos.
+function ensurePlayerEnergy() {
+
+    if (!Number.isFinite(player.maxEnergy))
+        player.maxEnergy = 100;
+
+    if (!Number.isFinite(player.energy))
+        player.energy = player.maxEnergy;
+
+    if (!Number.isFinite(player.damageBonus))
+        player.damageBonus = 0;
+}
+
+function giveStageUpgradePoint() {
+
+    ensurePlayerEnergy();
+
+    upgradePoints++;
+    upgradeMenuOpen = true;
+
+    paused = true;
+
+    playTone(
+        880,
+        .12,
+        "triangle",
+        .08
+    );
+
+    text(
+        player.x,
+        player.y - 75,
+        "⭐ PONTO DE EVOLUÇÃO!",
+        "#facc15",
+        18
+    );
+}
+
+function applyUpgrade(option) {
+
+    ensurePlayerEnergy();
+
+    if (upgradePoints <= 0)
+        return;
+
+    if (option === 1) {
+
+        // VIDA
+        player.maxHp += 25;
+        player.hp = player.maxHp;
+
+        text(
+            player.x,
+            player.y - 55,
+            "❤️ VIDA +25",
+            "#f87171",
+            18
+        );
+
+    } else if (option === 2) {
+
+        // ENERGIA
+        player.maxEnergy += 20;
+        player.energy = player.maxEnergy;
+
+        text(
+            player.x,
+            player.y - 55,
+            "⚡ ENERGIA +20",
+            "#60a5fa",
+            18
+        );
+
+    } else if (option === 3) {
+
+        // DINHEIRO
+        player.coins += 500;
+
+        text(
+            player.x,
+            player.y - 55,
+            "💰 +500",
+            "#facc15",
+            18
+        );
+
+    } else if (option === 4) {
+
+        // PODER
+        player.damageBonus += 5;
+
+        text(
+            player.x,
+            player.y - 55,
+            "⚔️ PODER +5",
+            "#c084fc",
+            18
+        );
     }
 
-    // pedras
-    for (let x = 15; x < W; x += 80) {
-        for (let y = 105; y < H; y += 105) {
-            const px = x + Math.sin(y * 2) * 10;
+    upgradePoints--;
 
-            ctx.fillStyle = "rgba(34,81,70,.7)";
+    if (upgradePoints <= 0) {
+
+        upgradeMenuOpen = false;
+        paused = false;
+
+        playTone(
+            620,
+            .10,
+            "triangle",
+            .06
+        );
+    }
+}
+
+
+// ============================================================
+// MENU DE EVOLUÇÃO
+// ============================================================
+
+function drawUpgradeMenu() {
+
+    if (!upgradeMenuOpen)
+        return;
+
+    ensurePlayerEnergy();
+
+    ctx.save();
+
+    // Fundo escuro
+    ctx.fillStyle = "rgba(0,0,0,.78)";
+    ctx.fillRect(
+        0,
+        0,
+        W,
+        H
+    );
+
+    const panelW =
+        Math.min(
+            520,
+            W - 30
+        );
+
+    const panelH = 390;
+
+    const panelX =
+        (W - panelW) / 2;
+
+    const panelY =
+        Math.max(
+            85,
+            (H - panelH) / 2
+        );
+
+    // Painel
+    ctx.fillStyle = "rgba(15,23,42,.97)";
+
+    ctx.beginPath();
+
+    ctx.roundRect(
+        panelX,
+        panelY,
+        panelW,
+        panelH,
+        22
+    );
+
+    ctx.fill();
+
+    ctx.strokeStyle = "#facc15";
+    ctx.lineWidth = 3;
+
+    ctx.stroke();
+
+    // Título
+    ctx.textAlign = "center";
+
+    ctx.fillStyle = "#facc15";
+    ctx.font = "bold 25px sans-serif";
+
+    ctx.fillText(
+        "⭐ EVOLUÇÃO",
+        W / 2,
+        panelY + 42
+    );
+
+    ctx.fillStyle = "#e2e8f0";
+    ctx.font = "15px sans-serif";
+
+    ctx.fillText(
+        "Você ganhou 1 ponto de evolução!",
+        W / 2,
+        panelY + 68
+    );
+
+    // ========================================================
+    // BOTÕES
+    // ========================================================
+
+    const gap = 10;
+
+    const buttonW =
+        (panelW - 45) / 2;
+
+    const buttonH = 105;
+
+    const buttons = [
+
+        {
+            x: panelX + 15,
+            y: panelY + 90,
+            color: "#7f1d1d",
+            title: "❤️ VIDA",
+            desc: "+25 Vida Máxima"
+        },
+
+        {
+            x: panelX + 30 + buttonW,
+            y: panelY + 90,
+            color: "#1e3a8a",
+            title: "⚡ ENERGIA",
+            desc: "+20 Energia Máxima"
+        },
+
+        {
+            x: panelX + 15,
+            y: panelY + 205,
+            color: "#713f12",
+            title: "💰 DINHEIRO",
+            desc: "+500 Moedas"
+        },
+
+        {
+            x: panelX + 30 + buttonW,
+            y: panelY + 205,
+            color: "#581c87",
+            title: "⚔️ PODER",
+            desc: "+5 Dano"
+        }
+    ];
+
+    buttons.forEach((b, index) => {
+
+        ctx.fillStyle = b.color;
+
+        ctx.beginPath();
+
+        ctx.roundRect(
+            b.x,
+            b.y,
+            buttonW,
+            buttonH,
+            15
+        );
+
+        ctx.fill();
+
+        ctx.strokeStyle =
+            "rgba(255,255,255,.25)";
+
+        ctx.lineWidth = 2;
+
+        ctx.stroke();
+
+        ctx.fillStyle = "#ffffff";
+
+        ctx.font = "bold 17px sans-serif";
+
+        ctx.fillText(
+            b.title,
+            b.x + buttonW / 2,
+            b.y + 38
+        );
+
+        ctx.font = "13px sans-serif";
+
+        ctx.fillStyle = "#cbd5e1";
+
+        ctx.fillText(
+            b.desc,
+            b.x + buttonW / 2,
+            b.y + 65
+        );
+
+        ctx.fillStyle = "#facc15";
+
+        ctx.font = "bold 12px sans-serif";
+
+        ctx.fillText(
+            "TOQUE / " + (index + 1),
+            b.x + buttonW / 2,
+            b.y + 88
+        );
+    });
+
+    // Pontos
+    ctx.fillStyle = "#f8fafc";
+    ctx.font = "bold 13px sans-serif";
+
+    ctx.fillText(
+        "Pontos restantes: " + upgradePoints,
+        W / 2,
+        panelY + 340
+    );
+
+    ctx.restore();
+}
+
+
+// ============================================================
+// CRÉDITOS
+// ============================================================
+
+function drawGameCredits() {
+
+    ctx.save();
+
+    ctx.globalAlpha = .65;
+
+    ctx.fillStyle = "#cbd5e1";
+
+    ctx.font =
+        "11px sans-serif";
+
+    ctx.textAlign = "center";
+
+    ctx.fillText(
+        "Criado por João Lucas",
+        W / 2,
+        H - 8
+    );
+
+    ctx.restore();
+}
+
+
+
+// ============================================================
+// LOJA DO TOMIOKA
+// ============================================================
+
+const TOMIOKA_SHOP_VERSION = "1.0";
+
+let shopOpen = false;
+let shopMessage = "";
+let shopMessageTimer = 0;
+let shopMessageColor = "#facc15";
+
+const shopItems = [
+
+    {
+        id: "life",
+        icon: "❤️",
+        name: "POÇÃO DE VIDA",
+        description: "Recupera 50% da vida",
+        basePrice: 250
+    },
+
+    {
+        id: "energy",
+        icon: "⚡",
+        name: "POÇÃO DE ENERGIA",
+        description: "Recupera 50% da energia",
+        basePrice: 200
+    },
+
+    {
+        id: "power",
+        icon: "⚔️",
+        name: "TREINO DE PODER",
+        description: "+5 dano permanente",
+        basePrice: 600
+    },
+
+    {
+        id: "defense",
+        icon: "🛡️",
+        name: "TREINO DE RESISTÊNCIA",
+        description: "+10 vida máxima",
+        basePrice: 700
+    },
+
+    {
+        id: "speed",
+        icon: "💨",
+        name: "TREINO DE VELOCIDADE",
+        description: "+0.15 velocidade",
+        basePrice: 800
+    }
+];
+
+const shopPurchases = {
+    life: 0,
+    energy: 0,
+    power: 0,
+    defense: 0,
+    speed: 0
+};
+
+
+// ============================================================
+// GARANTE OS ATRIBUTOS
+// ============================================================
+
+function ensureShopStats() {
+
+    if (!Number.isFinite(player.coins))
+        player.coins = 0;
+
+    if (!Number.isFinite(player.maxEnergy))
+        player.maxEnergy = 100;
+
+    if (!Number.isFinite(player.energy))
+        player.energy = player.maxEnergy;
+
+    if (!Number.isFinite(player.damageBonus))
+        player.damageBonus = 0;
+
+    if (!Number.isFinite(player.speed))
+        player.speed = 3;
+}
+
+
+// ============================================================
+// PREÇO PROGRESSIVO
+// ============================================================
+
+function getShopPrice(item) {
+
+    const bought =
+        shopPurchases[item.id] || 0;
+
+    return Math.floor(
+        item.basePrice *
+        Math.pow(1.35, bought)
+    );
+}
+
+
+// ============================================================
+// MENSAGEM
+// ============================================================
+
+function shopNotify(
+    message,
+    color = "#facc15"
+) {
+
+    shopMessage = message;
+    shopMessageTimer = 100;
+    shopMessageColor = color;
+
+    playTone(
+        700,
+        .10,
+        "triangle",
+        .06
+    );
+}
+
+
+// ============================================================
+// ABRIR / FECHAR
+// ============================================================
+
+function openShop() {
+
+    ensureShopStats();
+
+    if (upgradeMenuOpen)
+        return;
+
+    shopOpen = true;
+    paused = true;
+
+    playTone(
+        520,
+        .08,
+        "triangle",
+        .05
+    );
+}
+
+
+function closeShop() {
+
+    shopOpen = false;
+
+    if (!upgradeMenuOpen)
+        paused = false;
+
+    playTone(
+        360,
+        .07,
+        "triangle",
+        .04
+    );
+}
+
+
+// ============================================================
+// COMPRA
+// ============================================================
+
+function buyShopItem(id) {
+
+    ensureShopStats();
+
+    if (!shopOpen)
+        return;
+
+    const item =
+        shopItems.find(
+            x => x.id === id
+        );
+
+    if (!item)
+        return;
+
+    const price =
+        getShopPrice(item);
+
+    if (player.coins < price) {
+
+        shopNotify(
+            "💸 DINHEIRO INSUFICIENTE!",
+            "#f87171"
+        );
+
+        playTone(
+            180,
+            .12,
+            "sawtooth",
+            .04
+        );
+
+        return;
+    }
+
+
+    // ========================================================
+    // VIDA
+    // ========================================================
+
+    if (id === "life") {
+
+        if (player.hp >= player.maxHp) {
+
+            shopNotify(
+                "❤️ SUA VIDA JÁ ESTÁ CHEIA!",
+                "#facc15"
+            );
+
+            return;
+        }
+
+        player.coins -= price;
+
+        const heal =
+            Math.max(
+                1,
+                Math.floor(
+                    player.maxHp * .50
+                )
+            );
+
+        player.hp =
+            Math.min(
+                player.maxHp,
+                player.hp + heal
+            );
+    }
+
+
+    // ========================================================
+    // ENERGIA
+    // ========================================================
+
+    else if (id === "energy") {
+
+        if (
+            player.energy >=
+            player.maxEnergy
+        ) {
+
+            shopNotify(
+                "⚡ SUA ENERGIA JÁ ESTÁ CHEIA!",
+                "#facc15"
+            );
+
+            return;
+        }
+
+        player.coins -= price;
+
+        const restore =
+            Math.max(
+                1,
+                Math.floor(
+                    player.maxEnergy * .50
+                )
+            );
+
+        player.energy =
+            Math.min(
+                player.maxEnergy,
+                player.energy + restore
+            );
+    }
+
+
+    // ========================================================
+    // PODER
+    // ========================================================
+
+    else if (id === "power") {
+
+        player.coins -= price;
+
+        player.damageBonus += 5;
+    }
+
+
+    // ========================================================
+    // RESISTÊNCIA
+    // ========================================================
+
+    else if (id === "defense") {
+
+        player.coins -= price;
+
+        player.maxHp += 10;
+        player.hp += 10;
+    }
+
+
+    // ========================================================
+    // VELOCIDADE
+    // ========================================================
+
+    else if (id === "speed") {
+
+        player.coins -= price;
+
+        player.speed += .15;
+    }
+
+
+    else {
+        return;
+    }
+
+
+    shopPurchases[id] =
+        (shopPurchases[id] || 0) + 1;
+
+
+    shopNotify(
+        "✅ COMPRA REALIZADA!",
+        "#4ade80"
+    );
+
+    addParticle(
+        player.x,
+        player.y,
+        "#facc15",
+        20,
+        3
+    );
+}
+
+
+// ============================================================
+// BOTÃO DA LOJA
+// ============================================================
+
+function drawShopButton() {
+
+    if (
+        !started ||
+        gameOver ||
+        upgradeMenuOpen ||
+        shopOpen
+    )
+        return;
+
+    ensureShopStats();
+
+    const w = 112;
+    const h = 42;
+
+    // Loja fica à esquerda do botão DEV.
+    const x =
+        W - 112 - 92;
+
+    const y = 84;
+
+    ctx.save();
+
+    ctx.fillStyle =
+        "rgba(15,23,42,.90)";
+
+    ctx.beginPath();
+
+    ctx.roundRect(
+        x,
+        y,
+        w,
+        h,
+        12
+    );
+
+    ctx.fill();
+
+    ctx.strokeStyle =
+        "#facc15";
+
+    ctx.lineWidth = 2;
+
+    ctx.stroke();
+
+    ctx.textAlign = "center";
+
+    ctx.fillStyle = "#facc15";
+
+    ctx.font =
+        "bold 16px sans-serif";
+
+    ctx.fillText(
+        "💰 LOJA",
+        x + w / 2,
+        y + 18
+    );
+
+    ctx.fillStyle = "#ffffff";
+
+    ctx.font =
+        "bold 12px sans-serif";
+
+    ctx.fillText(
+        player.coins + " moedas",
+        x + w / 2,
+        y + 34
+    );
+
+    ctx.restore();
+}
+
+
+// ============================================================
+// MENU DA LOJA
+// ============================================================
+
+function drawShopMenu() {
+
+    if (!shopOpen)
+        return;
+
+    ensureShopStats();
+
+    ctx.save();
+
+    // Fundo
+    ctx.fillStyle =
+        "rgba(0,0,0,.80)";
+
+    ctx.fillRect(
+        0,
+        0,
+        W,
+        H
+    );
+
+
+    const panelW =
+        Math.min(
+            560,
+            W - 24
+        );
+
+    const panelH =
+        Math.min(
+            620,
+            H - 90
+        );
+
+    const panelX =
+        (W - panelW) / 2;
+
+    const panelY =
+        Math.max(
+            45,
+            (H - panelH) / 2
+        );
+
+
+    // Painel
+    ctx.fillStyle =
+        "rgba(15,23,42,.98)";
+
+    ctx.beginPath();
+
+    ctx.roundRect(
+        panelX,
+        panelY,
+        panelW,
+        panelH,
+        22
+    );
+
+    ctx.fill();
+
+    ctx.strokeStyle =
+        "#facc15";
+
+    ctx.lineWidth = 3;
+
+    ctx.stroke();
+
+
+    // ========================================================
+    // CABEÇALHO
+    // ========================================================
+
+    ctx.textAlign = "center";
+
+    ctx.fillStyle =
+        "#facc15";
+
+    ctx.font =
+        "bold 26px sans-serif";
+
+    ctx.fillText(
+        "💰 LOJA DO TOMIOKA",
+        W / 2,
+        panelY + 38
+    );
+
+
+    ctx.fillStyle =
+        "#ffffff";
+
+    ctx.font =
+        "bold 16px sans-serif";
+
+    ctx.fillText(
+        "💰 " + player.coins + " moedas",
+        W / 2,
+        panelY + 65
+    );
+
+
+    // Botão X
+    ctx.fillStyle =
+        "#7f1d1d";
+
+    ctx.beginPath();
+
+    ctx.roundRect(
+        panelX + panelW - 48,
+        panelY + 14,
+        32,
+        32,
+        9
+    );
+
+    ctx.fill();
+
+    ctx.fillStyle =
+        "#ffffff";
+
+    ctx.font =
+        "bold 18px sans-serif";
+
+    ctx.fillText(
+        "X",
+        panelX + panelW - 32,
+        panelY + 36
+    );
+
+
+    // ========================================================
+    // ITENS
+    // ========================================================
+
+    const gap = 10;
+
+    const itemW =
+        panelW - 30;
+
+    const itemH =
+        Math.min(
+            78,
+            (panelH - 105) / shopItems.length
+        );
+
+
+    shopItems.forEach(
+        (item, index) => {
+
+            const x =
+                panelX + 15;
+
+            const y =
+                panelY +
+                82 +
+                index *
+                (itemH + gap);
+
+            const price =
+                getShopPrice(item);
+
+            const canBuy =
+                player.coins >= price;
+
+
+            // Fundo
+            ctx.fillStyle =
+                canBuy
+                    ? "rgba(30,41,59,.96)"
+                    : "rgba(30,41,59,.55)";
+
             ctx.beginPath();
-            ctx.arc(px, y, 3.5, 0, Math.PI * 2);
+
+            ctx.roundRect(
+                x,
+                y,
+                itemW,
+                itemH,
+                13
+            );
+
+            ctx.fill();
+
+
+            ctx.strokeStyle =
+                canBuy
+                    ? "rgba(250,204,21,.35)"
+                    : "rgba(255,255,255,.08)";
+
+            ctx.lineWidth = 2;
+
+            ctx.stroke();
+
+
+            // Ícone
+            ctx.textAlign = "left";
+
+            ctx.font =
+                "24px sans-serif";
+
+            ctx.fillStyle =
+                canBuy
+                    ? "#ffffff"
+                    : "#64748b";
+
+            ctx.fillText(
+                item.icon,
+                x + 12,
+                y + 32
+            );
+
+
+            // Nome
+            ctx.font =
+                "bold 14px sans-serif";
+
+            ctx.fillStyle =
+                canBuy
+                    ? "#f8fafc"
+                    : "#94a3b8";
+
+            ctx.fillText(
+                item.name,
+                x + 50,
+                y + 25
+            );
+
+
+            // Descrição
+            ctx.font =
+                "11px sans-serif";
+
+            ctx.fillStyle =
+                "#94a3b8";
+
+            ctx.fillText(
+                item.description,
+                x + 50,
+                y + 44
+            );
+
+
+            // Compras
+            ctx.fillStyle =
+                "#64748b";
+
+            ctx.font =
+                "10px sans-serif";
+
+            ctx.fillText(
+                "Comprado: " +
+                (shopPurchases[item.id] || 0),
+                x + 50,
+                y + 62
+            );
+
+
+            // Preço
+            ctx.textAlign = "right";
+
+            ctx.fillStyle =
+                canBuy
+                    ? "#facc15"
+                    : "#f87171";
+
+            ctx.font =
+                "bold 14px sans-serif";
+
+            ctx.fillText(
+                "💰 " + price,
+                x + itemW - 12,
+                y + 31
+            );
+
+
+            ctx.fillStyle =
+                canBuy
+                    ? "#4ade80"
+                    : "#f87171";
+
+            ctx.font =
+                "bold 10px sans-serif";
+
+            ctx.fillText(
+                canBuy
+                    ? "COMPRAR"
+                    : "SEM DINHEIRO",
+                x + itemW - 12,
+                y + 52
+            );
+        }
+    );
+
+
+    // ========================================================
+    // MENSAGEM
+    // ========================================================
+
+    if (shopMessageTimer > 0) {
+
+        ctx.textAlign = "center";
+
+        ctx.fillStyle =
+            shopMessageColor;
+
+        ctx.font =
+            "bold 17px sans-serif";
+
+        ctx.fillText(
+            shopMessage,
+            W / 2,
+            panelY + panelH - 18
+        );
+    }
+
+
+    ctx.restore();
+}
+
+
+// ============================================================
+// ATUALIZA MENSAGEM
+// ============================================================
+
+function updateShop() {
+
+    if (shopMessageTimer > 0)
+        shopMessageTimer--;
+}
+
+
+// ============================================================
+// TOQUE / CLIQUE NA LOJA
+// ============================================================
+
+function shopPointer(x, y) {
+
+    // --------------------------------------------------------
+    // FECHAR
+    // --------------------------------------------------------
+
+    if (shopOpen) {
+
+        const panelW =
+            Math.min(
+                560,
+                W - 24
+            );
+
+        const panelH =
+            Math.min(
+                620,
+                H - 90
+            );
+
+        const panelX =
+            (W - panelW) / 2;
+
+        const panelY =
+            Math.max(
+                45,
+                (H - panelH) / 2
+            );
+
+
+        // X
+        if (
+            x >= panelX + panelW - 48 &&
+            x <= panelX + panelW - 16 &&
+            y >= panelY + 14 &&
+            y <= panelY + 46
+        ) {
+
+            closeShop();
+            return true;
+        }
+
+
+        // Itens
+        const gap = 10;
+
+        const itemW =
+            panelW - 30;
+
+        const itemH =
+            Math.min(
+                78,
+                (panelH - 105) /
+                shopItems.length
+            );
+
+
+        for (
+            let i = 0;
+            i < shopItems.length;
+            i++
+        ) {
+
+            const itemY =
+                panelY +
+                82 +
+                i *
+                (itemH + gap);
+
+
+            if (
+                x >= panelX + 15 &&
+                x <= panelX + 15 + itemW &&
+                y >= itemY &&
+                y <= itemY + itemH
+            ) {
+
+                buyShopItem(
+                    shopItems[i].id
+                );
+
+                return true;
+            }
+        }
+
+        return true;
+    }
+
+
+    // --------------------------------------------------------
+    // BOTÃO
+    // --------------------------------------------------------
+
+    if (
+        !upgradeMenuOpen &&
+        started &&
+        !gameOver
+    ) {
+
+        const w = 112;
+        const h = 42;
+
+        const bx =
+            W - w - 92;
+
+        const by = 84;
+
+        if (
+            x >= bx &&
+            x <= bx + w &&
+            y >= by &&
+            y <= by + h
+        ) {
+
+            openShop();
+
+            return true;
+        }
+    }
+
+    return false;
+}
+
+
+// ============================================================
+// TECLA L
+// ============================================================
+
+addEventListener(
+    "keydown",
+    function(e) {
+
+        if (
+            e.key.toLowerCase() === "l" &&
+            started &&
+            !gameOver
+        ) {
+
+            if (shopOpen)
+                closeShop();
+            else if (!upgradeMenuOpen)
+                openShop();
+        }
+
+        if (
+            shopOpen &&
+            e.key === "Escape"
+        ) {
+            closeShop();
+        }
+    }
+);
+
+
+// ============================================================
+// TOQUE NO CELULAR
+// ============================================================
+
+addEventListener(
+    "touchend",
+    function(e) {
+
+        if (
+            !started ||
+            gameOver
+        )
+            return;
+
+        const touch =
+            e.changedTouches[0];
+
+        if (!touch)
+            return;
+
+        const rect =
+            canvas.getBoundingClientRect();
+
+        const x =
+            (touch.clientX - rect.left) *
+            (W / rect.width);
+
+        const y =
+            (touch.clientY - rect.top) *
+            (H / rect.height);
+
+
+        if (
+            shopPointer(
+                x,
+                y
+            )
+        ) {
+
+            e.preventDefault();
+            e.stopPropagation();
+        }
+    },
+    {
+        passive: false
+    }
+);
+
+
+const stageCollisionMaps = {
+
+    // ========================================================
+    // FASE 1 - FLORESTA DA ÁGUA
+    // ========================================================
+    1: [
+        { type:"circle", x:.14, y:.27, r:.045, kind:"arvore" },
+        { type:"circle", x:.28, y:.24, r:.038, kind:"pedra" },
+        { type:"circle", x:.84, y:.27, r:.045, kind:"arvore" },
+        { type:"circle", x:.72, y:.40, r:.035, kind:"pedra" },
+
+        { type:"circle", x:.18, y:.66, r:.042, kind:"pedra" },
+        { type:"circle", x:.34, y:.78, r:.050, kind:"arvore" },
+        { type:"circle", x:.68, y:.73, r:.045, kind:"arvore" },
+        { type:"circle", x:.84, y:.62, r:.040, kind:"pedra" },
+
+        { type:"circle", x:.50, y:.34, r:.032, kind:"pedra" }
+    ],
+
+    // ========================================================
+    // FASE 2 - FLORESTA NOTURNA
+    // ========================================================
+    2: [
+        { type:"circle", x:.14, y:.28, r:.055, kind:"arvore" },
+        { type:"circle", x:.30, y:.22, r:.045, kind:"arvore" },
+        { type:"circle", x:.82, y:.25, r:.055, kind:"arvore" },
+        { type:"circle", x:.68, y:.38, r:.045, kind:"arvore" },
+
+        { type:"circle", x:.18, y:.67, r:.050, kind:"arvore" },
+        { type:"circle", x:.36, y:.76, r:.045, kind:"arvore" },
+        { type:"circle", x:.66, y:.75, r:.050, kind:"arvore" },
+        { type:"circle", x:.84, y:.65, r:.045, kind:"arvore" },
+
+        { type:"circle", x:.50, y:.30, r:.035, kind:"pedra" }
+    ],
+
+    // ========================================================
+    // FASE 3 - VILA ABANDONADA
+    // ========================================================
+    3: [
+        { type:"rect", x:.06, y:.21, w:.22, h:.13, kind:"casa" },
+        { type:"rect", x:.72, y:.21, w:.22, h:.13, kind:"casa" },
+
+        { type:"rect", x:.08, y:.65, w:.20, h:.13, kind:"casa" },
+        { type:"rect", x:.72, y:.64, w:.20, h:.14, kind:"casa" },
+
+        { type:"rect", x:.34, y:.24, w:.08, h:.08, kind:"barril" },
+        { type:"rect", x:.58, y:.24, w:.08, h:.08, kind:"barril" },
+
+        { type:"rect", x:.35, y:.68, w:.08, h:.08, kind:"barril" },
+        { type:"rect", x:.57, y:.68, w:.08, h:.08, kind:"barril" }
+    ],
+
+    // ========================================================
+    // FASE 4 - TEMPLO DEMONÍACO
+    // ========================================================
+    4: [
+        { type:"rect", x:.08, y:.20, w:.08, h:.34, kind:"coluna" },
+        { type:"rect", x:.84, y:.20, w:.08, h:.34, kind:"coluna" },
+
+        { type:"rect", x:.28, y:.68, w:.16, h:.09, kind:"altar" },
+        { type:"rect", x:.56, y:.68, w:.16, h:.09, kind:"altar" },
+
+        { type:"rect", x:.24, y:.34, w:.10, h:.08, kind:"coluna" },
+        { type:"rect", x:.66, y:.34, w:.10, h:.08, kind:"coluna" },
+
+        { type:"rect", x:.44, y:.48, w:.12, h:.10, kind:"altar" }
+    ],
+
+    // ========================================================
+    // FASE 5 - MONTANHA NEVADA
+    // ========================================================
+    5: [
+        { type:"circle", x:.15, y:.27, r:.060, kind:"neve" },
+        { type:"circle", x:.31, y:.23, r:.045, kind:"neve" },
+        { type:"circle", x:.82, y:.27, r:.060, kind:"neve" },
+        { type:"circle", x:.68, y:.38, r:.045, kind:"neve" },
+
+        { type:"circle", x:.18, y:.68, r:.055, kind:"neve" },
+        { type:"circle", x:.34, y:.77, r:.050, kind:"neve" },
+        { type:"circle", x:.67, y:.74, r:.055, kind:"neve" },
+        { type:"circle", x:.84, y:.64, r:.050, kind:"neve" },
+
+        { type:"circle", x:.50, y:.31, r:.038, kind:"neve" }
+    ],
+
+    // ========================================================
+    // FASE 6 - VALE SOMBRIO
+    // ========================================================
+    6: [
+        { type:"circle", x:.14, y:.29, r:.060, kind:"rocha" },
+        { type:"circle", x:.29, y:.23, r:.045, kind:"rocha" },
+        { type:"circle", x:.82, y:.27, r:.060, kind:"rocha" },
+        { type:"circle", x:.69, y:.40, r:.045, kind:"rocha" },
+
+        { type:"circle", x:.18, y:.68, r:.055, kind:"rocha" },
+        { type:"circle", x:.34, y:.77, r:.050, kind:"rocha" },
+        { type:"circle", x:.67, y:.74, r:.060, kind:"rocha" },
+        { type:"circle", x:.84, y:.64, r:.050, kind:"rocha" },
+
+        { type:"circle", x:.50, y:.33, r:.040, kind:"rocha" }
+    ],
+
+    // ========================================================
+    // FASE 7 - SANTUÁRIO DA LUA
+    // ========================================================
+    7: [
+        { type:"circle", x:.15, y:.28, r:.045, kind:"pilar" },
+        { type:"circle", x:.31, y:.23, r:.040, kind:"pilar" },
+        { type:"circle", x:.84, y:.28, r:.045, kind:"pilar" },
+        { type:"circle", x:.69, y:.39, r:.040, kind:"pilar" },
+
+        { type:"circle", x:.18, y:.69, r:.042, kind:"pilar" },
+        { type:"circle", x:.34, y:.77, r:.040, kind:"pilar" },
+        { type:"circle", x:.67, y:.74, r:.042, kind:"pilar" },
+        { type:"circle", x:.84, y:.64, r:.040, kind:"pilar" },
+
+        { type:"rect", x:.42, y:.46, w:.16, h:.07, kind:"altar" }
+    ],
+
+    // ========================================================
+    // FASE 8 - FORTALEZA ONI
+    // ========================================================
+    8: [
+        { type:"rect", x:.06, y:.20, w:.12, h:.34, kind:"muralha" },
+        { type:"rect", x:.82, y:.20, w:.12, h:.34, kind:"muralha" },
+
+        { type:"rect", x:.16, y:.70, w:.22, h:.09, kind:"muralha" },
+        { type:"rect", x:.62, y:.70, w:.22, h:.09, kind:"muralha" },
+
+        { type:"rect", x:.28, y:.28, w:.10, h:.10, kind:"coluna" },
+        { type:"rect", x:.62, y:.28, w:.10, h:.10, kind:"coluna" },
+
+        { type:"rect", x:.43, y:.48, w:.14, h:.12, kind:"altar" }
+    ]
+};
+
+function getStageObstacles() {
+
+    const stage = Math.max(
+        1,
+        currentStage
+    );
+
+    const mode =
+        ((stage - 1) % 8) + 1;
+
+    const map =
+        stageCollisionMaps[mode] || [];
+
+    return map.map(o => {
+
+        if (o.type === "circle") {
+
+            return {
+                type: "circle",
+
+                x: W * o.x,
+                y: H * o.y,
+
+                r: Math.max(
+                    10,
+                    Math.min(W, H) * o.r
+                ),
+
+                kind: o.kind
+            };
+        }
+
+        if (o.type === "rect") {
+
+            return {
+                type: "rect",
+
+                x: W * o.x,
+                y: H * o.y,
+
+                w: W * o.w,
+                h: H * o.h,
+
+                kind: o.kind
+            };
+        }
+
+        return null;
+
+    }).filter(Boolean);
+}
+
+
+// ============================================================
+// COLISÃO DO PLAYER COM O MAPA
+// ============================================================
+
+function circleHitsObstacle(
+    x,
+    y,
+    radius,
+    obstacle
+) {
+
+    const margin = 2;
+
+    if (obstacle.type === "circle") {
+
+        const dx =
+            x - obstacle.x;
+
+        const dy =
+            y - obstacle.y;
+
+        const distance =
+            Math.hypot(dx, dy);
+
+        return distance <
+            radius +
+            obstacle.r -
+            margin;
+    }
+
+    if (obstacle.type === "rect") {
+
+        const left =
+            obstacle.x;
+
+        const right =
+            obstacle.x +
+            obstacle.w;
+
+        const top =
+            obstacle.y;
+
+        const bottom =
+            obstacle.y +
+            obstacle.h;
+
+        const closestX =
+            clamp(
+                x,
+                left,
+                right
+            );
+
+        const closestY =
+            clamp(
+                y,
+                top,
+                bottom
+            );
+
+        const dx =
+            x - closestX;
+
+        const dy =
+            y - closestY;
+
+        return (
+            dx * dx +
+            dy * dy
+        ) < Math.pow(
+            radius,
+            2
+        );
+    }
+
+    return false;
+}
+
+
+// ============================================================
+// RESOLVE COLISÃO
+// ============================================================
+
+function resolvePlayerScenarioCollision() {
+
+    const obstacles =
+        getStageObstacles();
+
+    for (const obstacle of obstacles) {
+
+        if (!circleHitsObstacle(
+            player.x,
+            player.y,
+            player.r,
+            obstacle
+        )) {
+            continue;
+        }
+
+        // ----------------------------------------------------
+        // CÍRCULO
+        // ----------------------------------------------------
+
+        if (obstacle.type === "circle") {
+
+            let dx =
+                player.x -
+                obstacle.x;
+
+            let dy =
+                player.y -
+                obstacle.y;
+
+            let distance =
+                Math.hypot(dx, dy);
+
+            if (distance < .001) {
+                dx = 1;
+                dy = 0;
+                distance = 1;
+            }
+
+            const target =
+                player.r +
+                obstacle.r;
+
+            const push =
+                target -
+                distance;
+
+            if (push > 0) {
+
+                player.x +=
+                    dx / distance *
+                    push;
+
+                player.y +=
+                    dy / distance *
+                    push;
+            }
+        }
+
+        // ----------------------------------------------------
+        // RETÂNGULO
+        // ----------------------------------------------------
+
+        if (obstacle.type === "rect") {
+
+            const left =
+                obstacle.x;
+
+            const right =
+                obstacle.x +
+                obstacle.w;
+
+            const top =
+                obstacle.y;
+
+            const bottom =
+                obstacle.y +
+                obstacle.h;
+
+            const insideX =
+                player.x > left &&
+                player.x < right;
+
+            const insideY =
+                player.y > top &&
+                player.y < bottom;
+
+            // Player entrou dentro do objeto.
+            if (insideX && insideY) {
+
+                const dl =
+                    player.x - left;
+
+                const dr =
+                    right - player.x;
+
+                const dt =
+                    player.y - top;
+
+                const db =
+                    bottom - player.y;
+
+                const smallest =
+                    Math.min(
+                        dl,
+                        dr,
+                        dt,
+                        db
+                    );
+
+                if (smallest === dl) {
+
+                    player.x =
+                        left -
+                        player.r;
+
+                } else if (smallest === dr) {
+
+                    player.x =
+                        right +
+                        player.r;
+
+                } else if (smallest === dt) {
+
+                    player.y =
+                        top -
+                        player.r;
+
+                } else {
+
+                    player.y =
+                        bottom +
+                        player.r;
+                }
+
+            } else {
+
+                // Player está fora, mas encostando.
+                const closestX =
+                    clamp(
+                        player.x,
+                        left,
+                        right
+                    );
+
+                const closestY =
+                    clamp(
+                        player.y,
+                        top,
+                        bottom
+                    );
+
+                const dx =
+                    player.x -
+                    closestX;
+
+                const dy =
+                    player.y -
+                    closestY;
+
+                const distance =
+                    Math.hypot(dx, dy);
+
+                if (
+                    distance > 0 &&
+                    distance < player.r
+                ) {
+
+                    const push =
+                        player.r -
+                        distance;
+
+                    player.x +=
+                        dx / distance *
+                        push;
+
+                    player.y +=
+                        dy / distance *
+                        push;
+                }
+            }
+        }
+    }
+
+    player.x =
+        clamp(
+            player.x,
+            28,
+            W - 28
+        );
+
+    player.y =
+        clamp(
+            player.y,
+            125,
+            H - 28
+        );
+}
+
+
+
+
+
+function drawStageObstacles() {
+
+    const obstacles = getStageObstacles();
+
+    for (const o of obstacles) {
+
+        ctx.save();
+
+        // =====================================================
+        // CÍRCULOS
+        // =====================================================
+
+        if (o.type === "circle") {
+
+            if (o.kind === "arvore") {
+
+                // sombra
+                ctx.globalAlpha = .30;
+                ctx.fillStyle = "#020617";
+
+                ctx.beginPath();
+                ctx.ellipse(
+                    o.x,
+                    o.y + o.r * .75,
+                    o.r * 1.25,
+                    o.r * .35,
+                    0,
+                    0,
+                    Math.PI * 2
+                );
+                ctx.fill();
+
+                // tronco
+                ctx.globalAlpha = 1;
+                ctx.fillStyle = "#422b1c";
+
+                ctx.fillRect(
+                    o.x - o.r * .22,
+                    o.y - o.r * .15,
+                    o.r * .44,
+                    o.r * 1.05
+                );
+
+                // copa
+                ctx.fillStyle = "#14532d";
+
+                ctx.beginPath();
+                ctx.arc(
+                    o.x,
+                    o.y - o.r * .35,
+                    o.r,
+                    0,
+                    Math.PI * 2
+                );
+                ctx.fill();
+
+                ctx.fillStyle = "#166534";
+
+                ctx.beginPath();
+                ctx.arc(
+                    o.x - o.r * .30,
+                    o.y - o.r * .55,
+                    o.r * .58,
+                    0,
+                    Math.PI * 2
+                );
+                ctx.fill();
+
+                ctx.beginPath();
+                ctx.arc(
+                    o.x + o.r * .30,
+                    o.y - o.r * .50,
+                    o.r * .55,
+                    0,
+                    Math.PI * 2
+                );
+                ctx.fill();
+
+            } else if (o.kind === "neve") {
+
+                ctx.globalAlpha = .30;
+                ctx.fillStyle = "#64748b";
+
+                ctx.beginPath();
+                ctx.ellipse(
+                    o.x,
+                    o.y + o.r * .55,
+                    o.r * 1.2,
+                    o.r * .45,
+                    0,
+                    0,
+                    Math.PI * 2
+                );
+                ctx.fill();
+
+                ctx.globalAlpha = 1;
+                ctx.fillStyle = "#e2e8f0";
+
+                ctx.beginPath();
+                ctx.arc(
+                    o.x,
+                    o.y,
+                    o.r,
+                    0,
+                    Math.PI * 2
+                );
+                ctx.fill();
+
+                ctx.fillStyle = "#ffffff";
+
+                ctx.beginPath();
+                ctx.arc(
+                    o.x - o.r * .25,
+                    o.y - o.r * .30,
+                    o.r * .55,
+                    0,
+                    Math.PI * 2
+                );
+                ctx.fill();
+
+                ctx.strokeStyle = "#bfdbfe";
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+            } else if (o.kind === "pilar") {
+
+                ctx.globalAlpha = .30;
+                ctx.fillStyle = "#020617";
+
+                ctx.beginPath();
+                ctx.ellipse(
+                    o.x,
+                    o.y + o.r,
+                    o.r * 1.2,
+                    o.r * .30,
+                    0,
+                    0,
+                    Math.PI * 2
+                );
+                ctx.fill();
+
+                ctx.globalAlpha = 1;
+                ctx.fillStyle = "#64748b";
+
+                ctx.fillRect(
+                    o.x - o.r * .55,
+                    o.y - o.r,
+                    o.r * 1.1,
+                    o.r * 2
+                );
+
+                ctx.fillStyle = "#94a3b8";
+
+                ctx.fillRect(
+                    o.x - o.r * .70,
+                    o.y - o.r,
+                    o.r * 1.4,
+                    o.r * .25
+                );
+
+                ctx.fillRect(
+                    o.x - o.r * .70,
+                    o.y + o.r * .75,
+                    o.r * 1.4,
+                    o.r * .25
+                );
+
+                ctx.strokeStyle = "#cbd5e1";
+                ctx.lineWidth = 2;
+
+                ctx.strokeRect(
+                    o.x - o.r * .55,
+                    o.y - o.r,
+                    o.r * 1.1,
+                    o.r * 2
+                );
+
+            } else {
+
+                // pedra / rocha
+                ctx.globalAlpha = .35;
+                ctx.fillStyle = "#020617";
+
+                ctx.beginPath();
+                ctx.ellipse(
+                    o.x,
+                    o.y + o.r * .60,
+                    o.r * 1.15,
+                    o.r * .40,
+                    0,
+                    0,
+                    Math.PI * 2
+                );
+                ctx.fill();
+
+                ctx.globalAlpha = 1;
+                ctx.fillStyle =
+                    o.kind === "rocha"
+                        ? "#292524"
+                        : "#475569";
+
+                ctx.beginPath();
+                ctx.arc(
+                    o.x,
+                    o.y,
+                    o.r,
+                    0,
+                    Math.PI * 2
+                );
+                ctx.fill();
+
+                ctx.fillStyle =
+                    o.kind === "rocha"
+                        ? "#44403c"
+                        : "#64748b";
+
+                ctx.beginPath();
+                ctx.arc(
+                    o.x - o.r * .25,
+                    o.y - o.r * .30,
+                    o.r * .48,
+                    0,
+                    Math.PI * 2
+                );
+                ctx.fill();
+
+                ctx.strokeStyle = "rgba(255,255,255,.12)";
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+        }
+
+
+        // =====================================================
+        // RETÂNGULOS
+        // =====================================================
+
+        if (o.type === "rect") {
+
+            // sombra
+            ctx.globalAlpha = .30;
+            ctx.fillStyle = "#020617";
+
+            ctx.fillRect(
+                o.x + 5,
+                o.y + 6,
+                o.w,
+                o.h
+            );
+
+            ctx.globalAlpha = 1;
+
+            if (o.kind === "casa") {
+
+                ctx.fillStyle = "#3f2f24";
+                ctx.fillRect(
+                    o.x,
+                    o.y,
+                    o.w,
+                    o.h
+                );
+
+                // telhado
+                ctx.fillStyle = "#211712";
+
+                ctx.beginPath();
+                ctx.moveTo(
+                    o.x - 5,
+                    o.y
+                );
+                ctx.lineTo(
+                    o.x + o.w / 2,
+                    o.y - 18
+                );
+                ctx.lineTo(
+                    o.x + o.w + 5,
+                    o.y
+                );
+                ctx.closePath();
+                ctx.fill();
+
+                // janela
+                ctx.fillStyle = "#f59e0b";
+
+                ctx.fillRect(
+                    o.x + o.w * .25,
+                    o.y + o.h * .28,
+                    o.w * .18,
+                    o.h * .25
+                );
+
+            } else if (o.kind === "barril") {
+
+                ctx.fillStyle = "#78350f";
+
+                ctx.fillRect(
+                    o.x,
+                    o.y,
+                    o.w,
+                    o.h
+                );
+
+                ctx.strokeStyle = "#d97706";
+                ctx.lineWidth = 3;
+
+                ctx.strokeRect(
+                    o.x + 2,
+                    o.y + 2,
+                    o.w - 4,
+                    o.h - 4
+                );
+
+            } else if (o.kind === "coluna") {
+
+                ctx.fillStyle = "#4c1d2b";
+
+                ctx.fillRect(
+                    o.x,
+                    o.y,
+                    o.w,
+                    o.h
+                );
+
+                ctx.fillStyle = "#7f1d1d";
+
+                ctx.fillRect(
+                    o.x - 5,
+                    o.y,
+                    o.w + 10,
+                    10
+                );
+
+                ctx.fillRect(
+                    o.x - 5,
+                    o.y + o.h - 10,
+                    o.w + 10,
+                    10
+                );
+
+            } else if (o.kind === "altar") {
+
+                ctx.fillStyle = "#713f12";
+
+                ctx.fillRect(
+                    o.x,
+                    o.y,
+                    o.w,
+                    o.h
+                );
+
+                ctx.fillStyle = "#facc15";
+
+                ctx.fillRect(
+                    o.x + o.w * .35,
+                    o.y - 5,
+                    o.w * .30,
+                    5
+                );
+
+            } else if (o.kind === "muralha") {
+
+                ctx.fillStyle = "#292524";
+
+                ctx.fillRect(
+                    o.x,
+                    o.y,
+                    o.w,
+                    o.h
+                );
+
+                ctx.fillStyle = "#44403c";
+
+                for (
+                    let y = o.y + 8;
+                    y < o.y + o.h;
+                    y += 18
+                ) {
+                    ctx.fillRect(
+                        o.x,
+                        y,
+                        o.w,
+                        4
+                    );
+                }
+            }
+
+            ctx.strokeStyle = "rgba(255,255,255,.15)";
+            ctx.lineWidth = 2;
+
+            ctx.strokeRect(
+                o.x,
+                o.y,
+                o.w,
+                o.h
+            );
+        }
+
+        ctx.restore();
+    }
+}
+
+
+
+
+
+function drawBackground() {
+
+    const stage = Math.max(1, currentStage);
+    const mode = ((stage - 1) % 8) + 1;
+
+    // =========================================================
+    // PALETA DE CADA FASE
+    // =========================================================
+
+    const themes = {
+
+        1: {
+            top: "#071f22",
+            middle: "#0b4037",
+            bottom: "#061f1c",
+            ground: "#0b493b",
+            accent: "#38bdf8"
+        },
+
+        2: {
+            top: "#080b18",
+            middle: "#151b32",
+            bottom: "#080d18",
+            ground: "#101827",
+            accent: "#818cf8"
+        },
+
+        3: {
+            top: "#241914",
+            middle: "#493026",
+            bottom: "#211510",
+            ground: "#50372b",
+            accent: "#f59e0b"
+        },
+
+        4: {
+            top: "#160b18",
+            middle: "#351323",
+            bottom: "#100711",
+            ground: "#32121f",
+            accent: "#ef4444"
+        },
+
+        5: {
+            top: "#dbeafe",
+            middle: "#bfdbfe",
+            bottom: "#93c5fd",
+            ground: "#dbeafe",
+            accent: "#ffffff"
+        },
+
+        6: {
+            top: "#090b12",
+            middle: "#171725",
+            bottom: "#05060a",
+            ground: "#151525",
+            accent: "#a855f7"
+        },
+
+        7: {
+            top: "#11142b",
+            middle: "#25245a",
+            bottom: "#090b1d",
+            ground: "#202052",
+            accent: "#c4b5fd"
+        },
+
+        8: {
+            top: "#180708",
+            middle: "#421316",
+            bottom: "#100405",
+            ground: "#351012",
+            accent: "#f87171"
+        }
+
+    };
+
+    const theme = themes[mode] || themes[1];
+
+    // =========================================================
+    // FUNDO PRINCIPAL
+    // =========================================================
+
+    const gradient =
+        ctx.createLinearGradient(
+            0,
+            0,
+            0,
+            H
+        );
+
+    gradient.addColorStop(
+        0,
+        theme.top
+    );
+
+    gradient.addColorStop(
+        .5,
+        theme.middle
+    );
+
+    gradient.addColorStop(
+        1,
+        theme.bottom
+    );
+
+    ctx.fillStyle = gradient;
+    ctx.fillRect(
+        0,
+        0,
+        W,
+        H
+    );
+
+    // =========================================================
+    // ÁREA DO CHÃO
+    // =========================================================
+
+    ctx.fillStyle = theme.ground;
+
+    ctx.fillRect(
+        0,
+        76,
+        W,
+        H - 76
+    );
+
+    // =========================================================
+    // SPRITE DO CHÃO
+    // =========================================================
+
+    if (
+        chaoSprite.complete &&
+        chaoSprite.naturalWidth
+    ) {
+
+        ctx.save();
+
+        const chaoY = 76;
+        const chaoH = H - chaoY;
+
+        // Menos dominante para permitir que cada fase
+        // tenha sua própria identidade visual.
+        ctx.globalAlpha =
+            mode === 5 ? 0.55 : 0.35;
+
+        const escala =
+            Math.max(
+                W / chaoSprite.naturalWidth,
+                chaoH / chaoSprite.naturalHeight
+            );
+
+        const chaoW =
+            chaoSprite.naturalWidth *
+            escala;
+
+        const chaoDrawH =
+            chaoSprite.naturalHeight *
+            escala;
+
+        ctx.drawImage(
+            chaoSprite,
+            (W - chaoW) / 2,
+            chaoY +
+                (chaoH - chaoDrawH) / 2,
+            chaoW,
+            chaoDrawH
+        );
+
+        ctx.restore();
+    }
+
+    // =========================================================
+    // DETALHES ESPECÍFICOS DA FASE
+    // =========================================================
+
+    ctx.save();
+
+    // ---------------------------------------------------------
+    // FASE 1 - FLORESTA DA ÁGUA
+    // ---------------------------------------------------------
+
+    if (mode === 1) {
+
+        ctx.globalAlpha = .22;
+        ctx.fillStyle = "#22c55e";
+
+        for (let x = 20; x < W; x += 65) {
+
+            const h =
+                25 +
+                Math.sin(x * .08) * 15;
+
+            ctx.fillRect(
+                x,
+                H - 55 - h,
+                10,
+                h
+            );
+        }
+
+        ctx.globalAlpha = .18;
+        ctx.strokeStyle = "#38bdf8";
+
+        for (let y = 100; y < H; y += 70) {
+
+            ctx.beginPath();
+
+            for (let x = 0; x <= W; x += 20) {
+
+                const wave =
+                    Math.sin(
+                        x * .04 +
+                        worldTime * .03 +
+                        y
+                    ) * 3;
+
+                if (x === 0)
+                    ctx.moveTo(x, y + wave);
+                else
+                    ctx.lineTo(x, y + wave);
+            }
+
+            ctx.stroke();
+        }
+    }
+
+    // ---------------------------------------------------------
+    // FASE 2 - FLORESTA NOTURNA
+    // ---------------------------------------------------------
+
+    if (mode === 2) {
+
+        ctx.globalAlpha = .30;
+        ctx.fillStyle = "#020617";
+
+        for (let x = 15; x < W; x += 70) {
+
+            ctx.beginPath();
+            ctx.arc(
+                x,
+                110,
+                35,
+                0,
+                Math.PI * 2
+            );
+            ctx.fill();
+        }
+
+        ctx.globalAlpha = .55;
+        ctx.fillStyle = "#e0e7ff";
+
+        for (let i = 0; i < 30; i++) {
+
+            const x =
+                (i * 97) % W;
+
+            const y =
+                90 +
+                ((i * 53) % Math.max(1, H - 100));
+
+            ctx.fillRect(
+                x,
+                y,
+                2,
+                2
+            );
+        }
+    }
+
+    // ---------------------------------------------------------
+    // FASE 3 - VILA ABANDONADA
+    // ---------------------------------------------------------
+
+    if (mode === 3) {
+
+        ctx.globalAlpha = .35;
+
+        for (let x = 0; x < W; x += 100) {
+
+            ctx.fillStyle = "#291b15";
+
+            ctx.fillRect(
+                x,
+                90,
+                55,
+                35
+            );
+
+            ctx.fillStyle = "#17100d";
+
+            ctx.fillRect(
+                x + 8,
+                98,
+                12,
+                15
+            );
+
+            ctx.fillRect(
+                x + 32,
+                98,
+                12,
+                15
+            );
+        }
+    }
+
+    // ---------------------------------------------------------
+    // FASE 4 - TEMPLO DEMONÍACO
+    // ---------------------------------------------------------
+
+    if (mode === 4) {
+
+        ctx.globalAlpha = .22;
+
+        ctx.strokeStyle = "#ef4444";
+        ctx.lineWidth = 3;
+
+        for (let y = 120; y < H; y += 70) {
+
+            ctx.beginPath();
+
+            ctx.moveTo(
+                W * .25,
+                y
+            );
+
+            ctx.lineTo(
+                W * .75,
+                y
+            );
+
+            ctx.stroke();
+        }
+
+        ctx.globalAlpha = .18;
+        ctx.fillStyle = "#991b1b";
+
+        ctx.fillRect(
+            W * .44,
+            90,
+            W * .12,
+            H - 90
+        );
+    }
+
+    // ---------------------------------------------------------
+    // FASE 5 - MONTANHA NEVADA
+    // ---------------------------------------------------------
+
+    if (mode === 5) {
+
+        ctx.globalAlpha = .75;
+        ctx.fillStyle = "#ffffff";
+
+        for (let i = 0; i < 45; i++) {
+
+            const x =
+                (i * 83) % W;
+
+            const y =
+                90 +
+                ((i * 47 +
+                    worldTime * .4) %
+                    Math.max(1, H - 90));
+
+            ctx.beginPath();
+
+            ctx.arc(
+                x,
+                y,
+                2 + (i % 3),
+                0,
+                Math.PI * 2
+            );
+
             ctx.fill();
         }
     }
 
-    // estrelas/brilhos
-    for (const s of stars) {
-        const alpha =
-            .25 +
-            Math.sin(worldTime * .025 * s.speed + s.phase) * .2;
+    // ---------------------------------------------------------
+    // FASE 6 - VALE SOMBRIO
+    // ---------------------------------------------------------
 
-        ctx.globalAlpha = alpha;
-        ctx.fillStyle = "#bae6fd";
+    if (mode === 6) {
+
+        ctx.globalAlpha = .25;
+        ctx.fillStyle = "#000000";
+
+        for (let x = 0; x < W; x += 80) {
+
+            ctx.beginPath();
+
+            ctx.arc(
+                x,
+                H * .55,
+                60,
+                0,
+                Math.PI * 2
+            );
+
+            ctx.fill();
+        }
+
+        ctx.globalAlpha = .18;
+        ctx.strokeStyle = "#a855f7";
+
+        for (let y = 130; y < H; y += 100) {
+
+            ctx.beginPath();
+
+            ctx.moveTo(
+                0,
+                y
+            );
+
+            ctx.lineTo(
+                W,
+                y
+            );
+
+            ctx.stroke();
+        }
+    }
+
+    // ---------------------------------------------------------
+    // FASE 7 - SANTUÁRIO DA LUA
+    // ---------------------------------------------------------
+
+    if (mode === 7) {
+
+        ctx.globalAlpha = .75;
+        ctx.fillStyle = "#f8fafc";
 
         ctx.beginPath();
+
         ctx.arc(
-            s.x * W,
-            80 + s.y * (H - 80),
-            s.size,
+            W * .82,
+            125,
+            32,
             0,
             Math.PI * 2
         );
+
         ctx.fill();
+
+        ctx.globalAlpha = .20;
+        ctx.strokeStyle = "#c4b5fd";
+        ctx.lineWidth = 3;
+
+        for (let r = 55; r < 140; r += 28) {
+
+            ctx.beginPath();
+
+            ctx.arc(
+                W * .82,
+                125,
+                r,
+                0,
+                Math.PI * 2
+            );
+
+            ctx.stroke();
+        }
     }
 
-    ctx.globalAlpha = 1;
+    // ---------------------------------------------------------
+    // FASE 8 - FORTALEZA ONI
+    // ---------------------------------------------------------
 
-    // árvores
-    for (let x = 30; x < W; x += 145) {
-        const y = 105 + (x % 230);
+    if (mode === 8) {
 
-        if (y > H - 50) continue;
+        ctx.globalAlpha = .35;
+        ctx.fillStyle = "#050505";
 
-        ctx.fillStyle = "#3b2419";
-        ctx.fillRect(x - 5, y, 10, 28);
+        for (let x = 0; x < W; x += 75) {
 
-        ctx.fillStyle = "#14532d";
-        ctx.beginPath();
-        ctx.arc(x, y - 7, 27, 0, Math.PI * 2);
-        ctx.fill();
+            ctx.fillRect(
+                x,
+                82,
+                45,
+                45
+            );
+        }
 
-        ctx.fillStyle = "#16a34a";
-        ctx.beginPath();
-        ctx.arc(x - 14, y + 2, 16, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.globalAlpha = .20;
+        ctx.strokeStyle = "#ef4444";
+        ctx.lineWidth = 4;
 
-        ctx.fillStyle = "#22c55e";
-        ctx.beginPath();
-        ctx.arc(x + 12, y - 1, 12, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.strokeRect(
+            8,
+            84,
+            W - 16,
+            H - 92
+        );
     }
+
+    ctx.restore();
+
+    // =========================================================
+    // OBJETOS FÍSICOS DO MAPA
+    // =========================================================
+
+    drawStageObstacles();
+
+    // =========================================================
+    // GRADE SUTIL DO TERRENO
+    // =========================================================
+
+    ctx.save();
+
+    ctx.globalAlpha = .08;
+    ctx.strokeStyle = theme.accent;
+    ctx.lineWidth = 1;
+
+    for (
+        let y = 120;
+        y < H;
+        y += 150
+    ) {
+
+        ctx.beginPath();
+
+        ctx.moveTo(
+            0,
+            y
+        );
+
+        ctx.lineTo(
+            W,
+            y
+        );
+
+        ctx.stroke();
+    }
+
+    
+    // =========================================================
+    // DEBUG DA COLISÃO
+    // =========================================================
+    if (DEBUG_COLLISION_MAP) {
+
+        const debugObstacles = getStageObstacles();
+
+        ctx.save();
+
+        for (const o of debugObstacles) {
+
+            ctx.globalAlpha = 0.30;
+            ctx.fillStyle = "#ff0000";
+            ctx.strokeStyle = "#ff0000";
+            ctx.lineWidth = 2;
+
+            if (o.type === "circle") {
+
+                ctx.beginPath();
+
+                ctx.arc(
+                    o.x,
+                    o.y,
+                    o.r,
+                    0,
+                    Math.PI * 2
+                );
+
+                ctx.fill();
+                ctx.stroke();
+
+            } else if (o.type === "rect") {
+
+                ctx.fillRect(
+                    o.x,
+                    o.y,
+                    o.w,
+                    o.h
+                );
+
+                ctx.strokeRect(
+                    o.x,
+                    o.y,
+                    o.w,
+                    o.h
+                );
+            }
+        }
+
+        // Hitbox do Tomioka
+        ctx.globalAlpha = 0.8;
+        ctx.strokeStyle = "#00ff00";
+        ctx.lineWidth = 3;
+
+        ctx.beginPath();
+
+        ctx.arc(
+            player.x,
+            player.y,
+            player.r,
+            0,
+            Math.PI * 2
+        );
+
+        ctx.stroke();
+
+        ctx.restore();
+    }
+
+    ctx.restore();
 }
 
-function drawPlayer() {
-    if (
-        player.invincible > 0 &&
-        Math.floor(player.invincible / 4) % 2 === 0
-    )
-        return;
+
+
+// ============================================================
+// SPRITE REAL DO TOMIOKA
+// ============================================================
+
+function drawPlayerSprite() {
+    if (!tomiokaSprite.complete || !tomiokaSprite.naturalWidth) {
+        return false;
+    }
 
     const bob = Math.sin(worldTime * .12) * 2;
 
-    // sombra
+    // Área real do personagem dentro da imagem original.
+    const sx = 312;
+    const sy = 88;
+    const sw = 502;
+    const sh = 974;
+
+    // Tamanho visual dentro do jogo.
+    const dw = 58;
+    const dh = 112;
+
+    ctx.save();
+
+    ctx.globalAlpha = 1;
+
+    // Sombra
     ctx.fillStyle = "rgba(0,0,0,.42)";
     ctx.beginPath();
     ctx.ellipse(
         player.x,
-        player.y + 24,
+        player.y + 25,
         24,
         8,
         0,
@@ -1271,7 +4132,7 @@ function drawPlayer() {
     );
     ctx.fill();
 
-    // aura da água
+    // Aura de água
     const aura = ctx.createRadialGradient(
         player.x,
         player.y,
@@ -1281,15 +4142,8 @@ function drawPlayer() {
         48
     );
 
-    aura.addColorStop(
-        0,
-        "rgba(56,189,248,.28)"
-    );
-
-    aura.addColorStop(
-        1,
-        "rgba(56,189,248,0)"
-    );
+    aura.addColorStop(0, "rgba(56,189,248,.22)");
+    aura.addColorStop(1, "rgba(56,189,248,0)");
 
     ctx.fillStyle = aura;
 
@@ -1303,112 +4157,141 @@ function drawPlayer() {
     );
     ctx.fill();
 
-    // pernas
-    ctx.fillStyle = "#111827";
+    // Sprite
+    ctx.imageSmoothingEnabled = true;
 
-    ctx.fillRect(
-        player.x - 11,
-        player.y + 22 + bob,
-        8,
-        13
+    ctx.drawImage(
+        tomiokaSprite,
+        sx,
+        sy,
+        sw,
+        sh,
+        player.x - dw / 2,
+        player.y - dh + bob,
+        dw,
+        dh
     );
 
-    ctx.fillRect(
-        player.x + 3,
-        player.y + 22 + bob,
-        8,
-        13
+    ctx.restore();
+
+    // Nome
+    ctx.fillStyle = "#e0f2fe";
+    ctx.font = "bold 12px Arial";
+    ctx.textAlign = "center";
+
+    ctx.fillText(
+        "Tomioka",
+        player.x,
+        player.y - 70 + bob
     );
 
-    // uniforme
-    const uniform = ctx.createLinearGradient(
-        player.x - 20,
-        player.y,
+    ctx.textAlign = "left";
+
+    return true;
+}
+
+
+// ============================================================
+// ESPADA REAL DO TOMIOKA
+// ============================================================
+
+function drawSwordSprite() {
+    if (
+        !espadaSprite.complete ||
+        !espadaSprite.naturalWidth
+    ) {
+        return;
+    }
+
+    const sx = 86;
+    const sy = 102;
+    const sw = 934;
+    const sh = 892;
+
+    const dw = 72;
+    const dh = 69;
+
+    const ataque =
+        typeof player.attacking !== "undefined"
+            ? player.attacking
+            : false;
+
+    const movimento =
+        Math.sin(worldTime * .12) * .04;
+
+    let angulo = movimento;
+
+    if (ataque) {
+        angulo = -0.9;
+    }
+
+    ctx.save();
+
+    ctx.translate(
         player.x + 20,
-        player.y + 35
+        player.y - 50
     );
 
-    uniform.addColorStop(0, "#172033");
-    uniform.addColorStop(1, "#020617");
+    ctx.rotate(angulo);
 
-    ctx.fillStyle = uniform;
+    ctx.globalAlpha = .96;
 
+    ctx.drawImage(
+        espadaSprite,
+        sx,
+        sy,
+        sw,
+        sh,
+        -dw / 2,
+        -dh / 2,
+        dw,
+        dh
+    );
+
+    ctx.restore();
+}
+
+function drawPlayer() {
+    if (
+        player.invincible > 0 &&
+        Math.floor(player.invincible / 4) % 2 === 0
+    ) {
+        return;
+    }
+
+    if (drawPlayerSprite()) {
+        drawSwordSprite();
+        return;
+    }
+
+    // Fallback: mantém o desenho antigo caso a imagem ainda não tenha carregado.
+    const bob = Math.sin(worldTime * .12) * 2;
+
+    ctx.fillStyle = "rgba(0,0,0,.42)";
     ctx.beginPath();
-    ctx.roundRect(
-        player.x - 19,
-        player.y - 3 + bob,
-        38,
-        36,
-        5
-    );
-    ctx.fill();
-
-    // gola
-    ctx.fillStyle = "#e5e7eb";
-
-    ctx.fillRect(
-        player.x - 4,
-        player.y - 2 + bob,
+    ctx.ellipse(
+        player.x,
+        player.y + 24,
+        24,
         8,
-        12
+        0,
+        0,
+        Math.PI * 2
     );
+    ctx.fill();
 
-    // haori azul-esverdeado
     ctx.fillStyle = "#164e63";
-
     ctx.beginPath();
-    ctx.moveTo(
-        player.x - 18,
-        player.y - 1 + bob
+    ctx.arc(
+        player.x,
+        player.y - 5 + bob,
+        22,
+        0,
+        Math.PI * 2
     );
-
-    ctx.lineTo(
-        player.x - 29,
-        player.y + 30 + bob
-    );
-
-    ctx.lineTo(
-        player.x - 5,
-        player.y + 23 + bob
-    );
-
-    ctx.closePath();
     ctx.fill();
 
-    ctx.fillStyle = "#0f766e";
-
-    ctx.beginPath();
-    ctx.moveTo(
-        player.x + 18,
-        player.y - 1 + bob
-    );
-
-    ctx.lineTo(
-        player.x + 29,
-        player.y + 30 + bob
-    );
-
-    ctx.lineTo(
-        player.x + 5,
-        player.y + 23 + bob
-    );
-
-    ctx.closePath();
-    ctx.fill();
-
-    // faixa
-    ctx.fillStyle = "#334155";
-
-    ctx.fillRect(
-        player.x - 18,
-        player.y + 12 + bob,
-        36,
-        5
-    );
-
-    // cabeça
     ctx.fillStyle = "#f2c6a0";
-
     ctx.beginPath();
     ctx.arc(
         player.x,
@@ -1419,9 +4302,7 @@ function drawPlayer() {
     );
     ctx.fill();
 
-    // cabelo escuro
     ctx.fillStyle = "#0f172a";
-
     ctx.beginPath();
     ctx.arc(
         player.x,
@@ -1432,103 +4313,238 @@ function drawPlayer() {
     );
     ctx.fill();
 
-    // mechas
-    ctx.beginPath();
-
-    ctx.moveTo(player.x - 13, player.y - 25 + bob);
-    ctx.lineTo(player.x - 22, player.y - 12 + bob);
-    ctx.lineTo(player.x - 10, player.y - 18 + bob);
-
-    ctx.moveTo(player.x + 13, player.y - 25 + bob);
-    ctx.lineTo(player.x + 22, player.y - 12 + bob);
-    ctx.lineTo(player.x + 10, player.y - 18 + bob);
-
-    ctx.fill();
-
-    // olhos
-    ctx.fillStyle = "#111827";
-
-    ctx.fillRect(
-        player.x - 7,
-        player.y - 19 + bob,
-        3,
-        3
-    );
-
-    ctx.fillRect(
-        player.x + 4,
-        player.y - 19 + bob,
-        3,
-        3
-    );
-
-    // espada Nichirin
-    ctx.save();
-
-    ctx.translate(
-        player.x,
-        player.y + bob
-    );
-
-    ctx.rotate(player.facing);
-
-    // bainha
-    ctx.fillStyle = "#111827";
-    ctx.fillRect(
-        -3,
-        13,
-        31,
-        5
-    );
-
-    // lâmina
-    const blade = ctx.createLinearGradient(
-        10,
-        -3,
-        43,
-        3
-    );
-
-    blade.addColorStop(0, "#e0f2fe");
-    blade.addColorStop(.5, "#7dd3fc");
-    blade.addColorStop(1, "#f8fafc");
-
-    ctx.fillStyle = blade;
-
-    ctx.beginPath();
-    ctx.moveTo(9, -3);
-    ctx.lineTo(42, -1);
-    ctx.lineTo(48, 0);
-    ctx.lineTo(42, 2);
-    ctx.lineTo(9, 3);
-    ctx.closePath();
-    ctx.fill();
-
-    // guarda
-    ctx.fillStyle = "#f59e0b";
-    ctx.fillRect(6, -6, 5, 12);
-
-    ctx.restore();
-
-    // nome
     ctx.fillStyle = "#e0f2fe";
     ctx.font = "bold 12px Arial";
     ctx.textAlign = "center";
-
     ctx.fillText(
         "Tomioka",
         player.x,
         player.y - 43 + bob
     );
-
     ctx.textAlign = "left";
 }
 
-function drawEnemy(enemy) {
-    const bob = Math.sin(enemy.wobble) * 2;
 
-    // sombra
-    ctx.fillStyle = "rgba(0,0,0,.48)";
+function drawEnemy(enemy) {
+
+    const bob =
+        Math.sin(enemy.wobble) * 2;
+
+    // ========================================================
+    // SPRITES DOS INIMIGOS
+    // Cada inimigo usa uma região diferente do spritesheet.
+    // ========================================================
+
+    if (
+        inimigosSprite.complete &&
+        inimigosSprite.naturalWidth
+    ) {
+
+        /*
+         * O spritesheet possui vários personagens.
+         *
+         * Os recortes abaixo são definidos em coordenadas
+         * relativas ao arquivo original 2048x1846.
+         *
+         * O sistema escolhe automaticamente pelo nome.
+         */
+
+        const sprites = {
+
+            "Slime": {
+                sx: 188,
+                sy: 91,
+                sw: 638,
+                sh: 810
+            },
+
+            "Demônio": {
+                sx: 826,
+                sy: 91,
+                sw: 600,
+                sh: 810
+            },
+
+            "Espírito": {
+                sx: 390,
+                sy: 901,
+                sw: 680,
+                sh: 615
+            },
+
+            "Oni": {
+                sx: 1070,
+                sy: 901,
+                sw: 680,
+                sh: 615
+            },
+
+            "Caçador": {
+                sx: 390,
+                sy: 0,
+                sw: 682,
+                sh: 615
+            },
+
+            "Lua": {
+                sx: 1070,
+                sy: 0,
+                sw: 680,
+                sh: 615
+            }
+        };
+
+        /*
+         * Se o inimigo não tiver sprite específico,
+         * usa o primeiro sprite como fallback.
+         */
+        const sprite =
+            sprites[enemy.name] ||
+            sprites["Slime"];
+
+        const tamanho =
+            Math.max(
+                58,
+                enemy.r * 2.35
+            );
+
+        const proporcao =
+            sprite.sh / sprite.sw;
+
+        const dw = tamanho;
+        const dh = tamanho * proporcao;
+
+        ctx.save();
+
+        // ----------------------------------------------------
+        // SOMBRA
+        // ----------------------------------------------------
+
+        ctx.fillStyle =
+            "rgba(0,0,0,.45)";
+
+        ctx.beginPath();
+
+        ctx.ellipse(
+            enemy.x,
+            enemy.y + enemy.r + 5,
+            enemy.r * 1.05,
+            enemy.r * .34,
+            0,
+            0,
+            Math.PI * 2
+        );
+
+        ctx.fill();
+
+        // ----------------------------------------------------
+        // FLASH DE DANO
+        // ----------------------------------------------------
+
+        if (enemy.hitFlash > 0) {
+            ctx.globalAlpha = .82;
+        }
+
+        ctx.imageSmoothingEnabled = true;
+
+        // ----------------------------------------------------
+        // SPRITE
+        // ----------------------------------------------------
+
+        ctx.drawImage(
+            inimigosSprite,
+
+            sprite.sx,
+            sprite.sy,
+            sprite.sw,
+            sprite.sh,
+
+            enemy.x - dw / 2,
+            enemy.y - dh + bob,
+
+            dw,
+            dh
+        );
+
+        ctx.restore();
+
+        // ----------------------------------------------------
+        // BARRA DE VIDA
+        // ----------------------------------------------------
+
+        const width =
+            enemy.r * 2.6;
+
+        ctx.fillStyle =
+            "#111827";
+
+        ctx.fillRect(
+            enemy.x - width / 2,
+            enemy.y - enemy.r - 18,
+            width,
+            6
+        );
+
+        ctx.fillStyle =
+            enemy.name === "Oni"
+                ? "#dc2626"
+                : "#ef4444";
+
+        ctx.fillRect(
+            enemy.x - width / 2,
+            enemy.y - enemy.r - 18,
+            width *
+                Math.max(
+                    0,
+                    enemy.hp / enemy.maxHp
+                ),
+            6
+        );
+
+        // ----------------------------------------------------
+        // NOME DOS INIMIGOS ESPECIAIS
+        // ----------------------------------------------------
+
+        if (
+            enemy.name === "Oni" ||
+            enemy.name === "Caçador" ||
+            enemy.name === "Lua"
+        ) {
+
+            ctx.fillStyle =
+                enemy.name === "Oni"
+                    ? "#fecaca"
+                    : "#ddd6fe";
+
+            ctx.font =
+                "bold 10px Arial";
+
+            ctx.textAlign =
+                "center";
+
+            ctx.fillText(
+                enemy.name.toUpperCase(),
+                enemy.x,
+                enemy.y + enemy.r + 17
+            );
+
+            ctx.textAlign =
+                "left";
+        }
+
+        return;
+    }
+
+    // ========================================================
+    // FALLBACK
+    // ========================================================
+
+    const bobFallback =
+        Math.sin(enemy.wobble) * 2;
+
+    ctx.fillStyle =
+        "rgba(0,0,0,.48)";
+
     ctx.beginPath();
 
     ctx.ellipse(
@@ -1543,41 +4559,6 @@ function drawEnemy(enemy) {
 
     ctx.fill();
 
-    // aura demoníaca
-    const aura = ctx.createRadialGradient(
-        enemy.x,
-        enemy.y,
-        2,
-        enemy.x,
-        enemy.y,
-        enemy.r * 1.8
-    );
-
-    aura.addColorStop(
-        0,
-        enemy.name === "Oni"
-            ? "rgba(239,68,68,.20)"
-            : "rgba(168,85,247,.12)"
-    );
-
-    aura.addColorStop(
-        1,
-        "rgba(0,0,0,0)"
-    );
-
-    ctx.fillStyle = aura;
-
-    ctx.beginPath();
-    ctx.arc(
-        enemy.x,
-        enemy.y,
-        enemy.r * 1.8,
-        0,
-        Math.PI * 2
-    );
-    ctx.fill();
-
-    // corpo
     ctx.fillStyle =
         enemy.hitFlash > 0
             ? "#ffffff"
@@ -1586,16 +4567,21 @@ function drawEnemy(enemy) {
     ctx.beginPath();
 
     if (enemy.name === "Oni") {
+
         ctx.ellipse(
             enemy.x,
-            enemy.y + bob,
+            enemy.y + bobFallback,
             enemy.r * .82,
             enemy.r * 1.15,
             0,
             0,
             Math.PI * 2
         );
-    } else if (enemy.name === "Demônio") {
+
+    } else if (
+        enemy.name === "Demônio"
+    ) {
+
         ctx.roundRect(
             enemy.x - enemy.r,
             enemy.y - enemy.r,
@@ -1603,10 +4589,12 @@ function drawEnemy(enemy) {
             enemy.r * 2.1,
             9
         );
+
     } else {
+
         ctx.arc(
             enemy.x,
-            enemy.y + bob,
+            enemy.y + bobFallback,
             enemy.r,
             0,
             Math.PI * 2
@@ -1615,179 +4603,11 @@ function drawEnemy(enemy) {
 
     ctx.fill();
 
-    // chifres
-    if (
-        enemy.name === "Oni" ||
-        enemy.name === "Demônio"
-    ) {
-        ctx.fillStyle = "#7f1d1d";
+    const width =
+        enemy.r * 2.6;
 
-        ctx.beginPath();
-
-        ctx.moveTo(
-            enemy.x - enemy.r * .55,
-            enemy.y - enemy.r * .65
-        );
-
-        ctx.lineTo(
-            enemy.x - enemy.r * .85,
-            enemy.y - enemy.r * 1.55
-        );
-
-        ctx.lineTo(
-            enemy.x - enemy.r * .15,
-            enemy.y - enemy.r * .85
-        );
-
-        ctx.closePath();
-        ctx.fill();
-
-        ctx.beginPath();
-
-        ctx.moveTo(
-            enemy.x + enemy.r * .55,
-            enemy.y - enemy.r * .65
-        );
-
-        ctx.lineTo(
-            enemy.x + enemy.r * .85,
-            enemy.y - enemy.r * 1.55
-        );
-
-        ctx.lineTo(
-            enemy.x + enemy.r * .15,
-            enemy.y - enemy.r * .85
-        );
-
-        ctx.closePath();
-        ctx.fill();
-    }
-
-    // olhos demoníacos
     ctx.fillStyle =
-        enemy.name === "Oni"
-            ? "#facc15"
-            : "#fee2e2";
-
-    ctx.beginPath();
-
-    ctx.ellipse(
-        enemy.x - enemy.r * .32,
-        enemy.y - enemy.r * .12 + bob,
-        5,
-        7,
-        -.2,
-        0,
-        Math.PI * 2
-    );
-
-    ctx.ellipse(
-        enemy.x + enemy.r * .32,
-        enemy.y - enemy.r * .12 + bob,
-        5,
-        7,
-        .2,
-        0,
-        Math.PI * 2
-    );
-
-    ctx.fill();
-
-    // pupilas
-    ctx.fillStyle = "#09090b";
-
-    ctx.beginPath();
-
-    ctx.arc(
-        enemy.x - enemy.r * .32,
-        enemy.y - enemy.r * .12 + bob,
-        2,
-        0,
-        Math.PI * 2
-    );
-
-    ctx.arc(
-        enemy.x + enemy.r * .32,
-        enemy.y - enemy.r * .12 + bob,
-        2,
-        0,
-        Math.PI * 2
-    );
-
-    ctx.fill();
-
-    // boca e presas
-    ctx.fillStyle = "#0f172a";
-
-    ctx.beginPath();
-
-    ctx.ellipse(
-        enemy.x,
-        enemy.y + enemy.r * .38 + bob,
-        enemy.r * .38,
-        enemy.r * .20,
-        0,
-        0,
-        Math.PI * 2
-    );
-
-    ctx.fill();
-
-    ctx.fillStyle = "#f8fafc";
-
-    for (let i = -1; i <= 1; i++) {
-        ctx.beginPath();
-
-        ctx.moveTo(
-            enemy.x + i * 7 - 3,
-            enemy.y + enemy.r * .27 + bob
-        );
-
-        ctx.lineTo(
-            enemy.x + i * 7,
-            enemy.y + enemy.r * .48 + bob
-        );
-
-        ctx.lineTo(
-            enemy.x + i * 7 + 3,
-            enemy.y + enemy.r * .27 + bob
-        );
-
-        ctx.closePath();
-        ctx.fill();
-    }
-
-    // marcas demoníacas
-    if (enemy.name === "Oni") {
-        ctx.strokeStyle = "rgba(127,29,29,.8)";
-        ctx.lineWidth = 3;
-
-        ctx.beginPath();
-        ctx.moveTo(
-            enemy.x - 9,
-            enemy.y - 4 + bob
-        );
-        ctx.lineTo(
-            enemy.x - 15,
-            enemy.y + 10 + bob
-        );
-
-        ctx.moveTo(
-            enemy.x + 9,
-            enemy.y - 4 + bob
-        );
-        ctx.lineTo(
-            enemy.x + 15,
-            enemy.y + 10 + bob
-        );
-
-        ctx.stroke();
-    }
-
-    // barra de vida
-    const width = enemy.r * 2.6;
-
-    ctx.fillStyle = "#111827";
+        "#111827";
 
     ctx.fillRect(
         enemy.x - width / 2,
@@ -1797,31 +4617,20 @@ function drawEnemy(enemy) {
     );
 
     ctx.fillStyle =
-        enemy.name === "Oni"
-            ? "#dc2626"
-            : "#ef4444";
+        "#ef4444";
 
     ctx.fillRect(
         enemy.x - width / 2,
         enemy.y - enemy.r - 18,
-        width * Math.max(0, enemy.hp / enemy.maxHp),
+        width *
+            Math.max(
+                0,
+                enemy.hp / enemy.maxHp
+            ),
         6
     );
-
-    if (enemy.name === "Oni") {
-        ctx.fillStyle = "#fecaca";
-        ctx.font = "bold 10px Arial";
-        ctx.textAlign = "center";
-
-        ctx.fillText(
-            "ONI",
-            enemy.x,
-            enemy.y + enemy.r + 17
-        );
-
-        ctx.textAlign = "left";
-    }
 }
+
 
 function drawProjectiles() {
     for (const p of projectiles) {
@@ -3162,13 +5971,718 @@ function draw() {
     drawDashButton();
     drawGameOver();
     drawPaused();
+
+    
+    drawUpgradeMenu();
+
+    drawShopButton();
+    drawShopMenu();
+
+    // ========================================================
+    // CAMADA FINAL DA INTERFACE
+    // Créditos e Dev Menu ficam acima de todas as outras UI.
+    // ========================================================
+
+    drawGameCredits();
+    drawDevButton();
+    drawDevMenu();
 }
 
-function loop() {
-    update();
-    draw();
-    requestAnimationFrame(loop);
+
+/* TOMIOKA_DEV_MENU_V1 */
+
+// ============================================================
+// DEV MENU
+// ============================================================
+
+const DEV_MODE = true;
+
+let devMenuOpen = false;
+let devMessage = "";
+let devMessageTimer = 0;
+
+function devNotify(message) {
+
+    devMessage = message;
+    devMessageTimer = 90;
+
+    text(
+        player.x,
+        player.y - 95,
+        "🛠️ " + message,
+        "#facc15",
+        14
+    );
 }
+
+function toggleDevMenu() {
+
+    if (!DEV_MODE)
+        return;
+
+    devMenuOpen = !devMenuOpen;
+
+    if (devMenuOpen) {
+        paused = true;
+        devNotify("DEV MENU ABERTO");
+    } else {
+        paused = false;
+        devNotify("DEV MENU FECHADO");
+    }
+}
+
+// ============================================================
+// BOTÃO DEV
+// ============================================================
+
+function getDevButton() {
+
+    return {
+        x: W - 78,
+        y: 86,
+        w: 66,
+        h: 42
+    };
+}
+
+function drawDevButton() {
+
+    if (!DEV_MODE)
+        return;
+
+    const b = getDevButton();
+
+    ctx.save();
+
+    ctx.fillStyle =
+        devMenuOpen
+            ? "rgba(239,68,68,.92)"
+            : "rgba(15,23,42,.90)";
+
+    ctx.strokeStyle =
+        devMenuOpen
+            ? "#fca5a5"
+            : "#64748b";
+
+    ctx.lineWidth = 2;
+
+    ctx.beginPath();
+
+    ctx.roundRect(
+        b.x,
+        b.y,
+        b.w,
+        b.h,
+        9
+    );
+
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 15px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    ctx.fillText(
+        "🛠️",
+        b.x + b.w / 2,
+        b.y + b.h / 2
+    );
+
+    ctx.restore();
+}
+
+// ============================================================
+// BOTÕES DO MENU
+// ============================================================
+
+function getDevButtons() {
+
+    const panelW = Math.min(560, W - 24);
+    const panelX = (W - panelW) / 2;
+
+    const buttonW =
+        (panelW - 36) / 2;
+
+    const buttonH = 52;
+
+    const startY =
+        Math.max(
+            125,
+            (H - 430) / 2 + 75
+        );
+
+    const gap = 8;
+
+    const items = [
+        ["💰 +1.000", "money"],
+        ["💰 +100.000", "moneyBig"],
+
+        ["❤️ VIDA MAX", "hp"],
+        ["⚡ ENERGIA", "energy"],
+
+        ["⭐ +1.000 XP", "xp"],
+        ["⬆️ +1 NÍVEL", "level"],
+
+        ["🔥 RESET CD", "cooldown"],
+        ["🏃 VELOCIDADE", "speed"],
+
+        ["👹 SPAWN ONI", "spawn"],
+        ["🧹 LIMPAR INIMIGOS", "clear"],
+
+        ["🗺️ PRÓXIMA FASE", "nextStage"],
+        ["🔄 FASE 1", "stage1"]
+    ];
+
+    const buttons = [];
+
+    for (let i = 0; i < items.length; i++) {
+
+        const col = i % 2;
+        const row = Math.floor(i / 2);
+
+        buttons.push({
+            x:
+                panelX +
+                12 +
+                col * (buttonW + gap),
+
+            y:
+                startY +
+                row * (buttonH + gap),
+
+            w: buttonW,
+            h: buttonH,
+
+            label: items[i][0],
+            action: items[i][1]
+        });
+    }
+
+    return buttons;
+}
+
+// ============================================================
+// EXECUTA AÇÃO DEV
+// ============================================================
+
+function executeDevAction(action) {
+
+    if (!DEV_MODE)
+        return;
+
+    switch (action) {
+
+        case "money":
+            player.coins += 1000;
+            devNotify("+1.000 moedas");
+            break;
+
+        case "moneyBig":
+            player.coins += 100000;
+            devNotify("+100.000 moedas");
+            break;
+
+        case "hp":
+            player.maxHp += 100;
+            player.hp = player.maxHp;
+            devNotify("Vida máxima aumentada");
+            break;
+
+        case "energy":
+
+            if ("energy" in player)
+                player.energy = player.maxEnergy ?? 999;
+
+            if ("stamina" in player)
+                player.stamina = player.maxStamina ?? 999;
+
+            if ("specialEnergy" in player)
+                player.specialEnergy = 999;
+
+            devNotify("Energia restaurada");
+            break;
+
+        case "xp":
+            gainXP(1000);
+            devNotify("+1.000 XP");
+            break;
+
+        case "level":
+
+            player.level++;
+
+            player.maxHp += 15;
+            player.hp = player.maxHp;
+
+            player.xp = 0;
+
+            player.xpNext =
+                Math.floor(
+                    player.xpNext * 1.35
+                );
+
+            devNotify("Nível aumentado");
+            break;
+
+        case "cooldown":
+
+            player.attackCooldown = 0;
+            player.specialCooldown = 0;
+            player.dashCooldown = 0;
+            player.invincible = 0;
+
+            devNotify("Cooldowns resetados");
+            break;
+
+        case "speed":
+
+            player.speed =
+                Math.min(
+                    20,
+                    player.speed + 1
+                );
+
+            devNotify(
+                "Velocidade: " +
+                player.speed.toFixed(1)
+            );
+
+            break;
+
+        case "spawn":
+
+            if (
+                typeof spawnEnemy === "function"
+            ) {
+                spawnEnemy();
+                devNotify("Oni spawnado");
+            } else {
+                devNotify("Spawn automático usado");
+            }
+
+            break;
+
+        case "clear":
+
+            enemies.length = 0;
+
+            devNotify(
+                "Todos os inimigos removidos"
+            );
+
+            break;
+
+        case "nextStage":
+
+            currentStage++;
+
+            stageKills = 0;
+
+            devNotify(
+                "Fase " +
+                currentStage
+            );
+
+            break;
+
+        case "stage1":
+
+            currentStage = 1;
+            stageKills = 0;
+
+            devNotify("Voltando para fase 1");
+
+            break;
+    }
+
+    saveGame();
+}
+
+// ============================================================
+// DESENHO DO MENU
+// ============================================================
+
+function drawDevMenu() {
+
+    if (!DEV_MODE || !devMenuOpen)
+        return;
+
+    const panelW =
+        Math.min(
+            560,
+            W - 24
+        );
+
+    const panelH =
+        Math.min(
+            455,
+            H - 105
+        );
+
+    const panelX =
+        (W - panelW) / 2;
+
+    const panelY =
+        Math.max(
+            82,
+            (H - panelH) / 2
+        );
+
+    ctx.save();
+
+    // Fundo escuro
+    ctx.fillStyle =
+        "rgba(0,0,0,.68)";
+
+    ctx.fillRect(
+        0,
+        0,
+        W,
+        H
+    );
+
+    // Painel
+    ctx.fillStyle =
+        "rgba(15,23,42,.97)";
+
+    ctx.strokeStyle =
+        "#facc15";
+
+    ctx.lineWidth = 2;
+
+    ctx.beginPath();
+
+    ctx.roundRect(
+        panelX,
+        panelY,
+        panelW,
+        panelH,
+        18
+    );
+
+    ctx.fill();
+    ctx.stroke();
+
+    // Título
+    ctx.fillStyle = "#facc15";
+    ctx.font = "bold 22px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    ctx.fillText(
+        "🛠️ DEV MENU",
+        W / 2,
+        panelY + 28
+    );
+
+    // Status
+    ctx.fillStyle = "#94a3b8";
+    ctx.font = "13px sans-serif";
+
+    ctx.fillText(
+        "Tomioka Developer Tools",
+        W / 2,
+        panelY + 51
+    );
+
+    // Informações
+    ctx.textAlign = "left";
+    ctx.fillStyle = "#e2e8f0";
+    ctx.font = "13px sans-serif";
+
+    ctx.fillText(
+        "💰 " + player.coins +
+        "    ❤️ " +
+        Math.floor(player.hp) +
+        "/" +
+        Math.floor(player.maxHp),
+
+        panelX + 18,
+        panelY + 70
+    );
+
+    ctx.fillText(
+        "⭐ Nv. " +
+        player.level +
+        "    🗺️ Fase " +
+        currentStage,
+
+        panelX + panelW - 160,
+        panelY + 70
+    );
+
+    // Botões
+    const buttons =
+        getDevButtons();
+
+    for (const b of buttons) {
+
+        ctx.fillStyle =
+            "rgba(30,41,59,.96)";
+
+        ctx.strokeStyle =
+            "rgba(148,163,184,.45)";
+
+        ctx.lineWidth = 1.5;
+
+        ctx.beginPath();
+
+        ctx.roundRect(
+            b.x,
+            b.y,
+            b.w,
+            b.h,
+            10
+        );
+
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle =
+            "#f8fafc";
+
+        ctx.font =
+            "bold 13px sans-serif";
+
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+
+        ctx.fillText(
+            b.label,
+            b.x + b.w / 2,
+            b.y + b.h / 2
+        );
+    }
+
+    // Fechar
+    const closeY =
+        panelY +
+        panelH -
+        34;
+
+    ctx.fillStyle =
+        "#f87171";
+
+    ctx.font =
+        "bold 13px sans-serif";
+
+    ctx.fillText(
+        "✕ FECHAR DEV MENU",
+        W / 2,
+        closeY
+    );
+
+    ctx.restore();
+}
+
+// ============================================================
+// TOQUE NO DEV MENU
+// ============================================================
+
+function handleDevTouch(x, y) {
+
+    if (!DEV_MODE)
+        return false;
+
+    const button =
+        getDevButton();
+
+    // Botão 🛠️
+    if (
+        x >= button.x &&
+        x <= button.x + button.w &&
+        y >= button.y &&
+        y <= button.y + button.h
+    ) {
+
+        toggleDevMenu();
+
+        return true;
+    }
+
+    if (!devMenuOpen)
+        return false;
+
+    const panelW =
+        Math.min(
+            560,
+            W - 24
+        );
+
+    const panelH =
+        Math.min(
+            455,
+            H - 105
+        );
+
+    const panelX =
+        (W - panelW) / 2;
+
+    const panelY =
+        Math.max(
+            82,
+            (H - panelH) / 2
+        );
+
+    // Fechar
+    if (
+        y >= panelY + panelH - 60 &&
+        y <= panelY + panelH &&
+        x >= panelX &&
+        x <= panelX + panelW
+    ) {
+
+        toggleDevMenu();
+
+        return true;
+    }
+
+    // Botões
+    for (const b of getDevButtons()) {
+
+        if (
+            x >= b.x &&
+            x <= b.x + b.w &&
+            y >= b.y &&
+            y <= b.y + b.h
+        ) {
+
+            executeDevAction(
+                b.action
+            );
+
+            return true;
+        }
+    }
+
+    return true;
+}
+
+// ============================================================
+// TECLADO DEV
+// ============================================================
+
+addEventListener(
+    "keydown",
+    e => {
+
+        if (
+            DEV_MODE &&
+            e.key === "F2"
+        ) {
+
+            e.preventDefault();
+
+            toggleDevMenu();
+        }
+    }
+);
+
+// ============================================================
+// TOUCH CAPTURE DO DEV MENU
+// ============================================================
+
+let devTouchActive = false;
+
+function getCanvasPointFromTouch(touch) {
+
+    const rect = canvas.getBoundingClientRect();
+
+    return {
+        x:
+            (touch.clientX - rect.left) *
+            (W / rect.width),
+
+        y:
+            (touch.clientY - rect.top) *
+            (H / rect.height)
+    };
+}
+
+addEventListener(
+    "touchstart",
+    e => {
+
+        if (!DEV_MODE)
+            return;
+
+        const touch = e.changedTouches[0];
+
+        if (!touch)
+            return;
+
+        const p = getCanvasPointFromTouch(touch);
+        const b = getDevButton();
+
+        const onDevButton =
+            p.x >= b.x &&
+            p.x <= b.x + b.w &&
+            p.y >= b.y &&
+            p.y <= b.y + b.h;
+
+        if (devMenuOpen || onDevButton) {
+
+            devTouchActive = true;
+
+            e.preventDefault();
+            e.stopImmediatePropagation();
+        }
+
+    },
+    {
+        passive: false,
+        capture: true
+    }
+);
+
+addEventListener(
+    "touchend",
+    e => {
+
+        if (!DEV_MODE || !devTouchActive)
+            return;
+
+        const touch = e.changedTouches[0];
+
+        if (!touch)
+            return;
+
+        const p = getCanvasPointFromTouch(touch);
+
+        e.preventDefault();
+        e.stopImmediatePropagation();
+
+        handleDevTouch(p.x, p.y);
+
+        devTouchActive = false;
+
+    },
+    {
+        passive: false,
+        capture: true
+    }
+);
+
+addEventListener(
+    "touchcancel",
+    e => {
+
+        if (!DEV_MODE || !devTouchActive)
+            return;
+
+        e.preventDefault();
+        e.stopImmediatePropagation();
+
+        devTouchActive = false;
+
+    },
+    {
+        passive: false,
+        capture: true
+    }
+);
 
 
 // ============================================================
@@ -3264,9 +6778,11 @@ function loadGame() {
 
         player.y = clamp(
             Number(data.player.y) || H / 2,
-            95,
+            125,
             H - 28
         );
+
+        resolvePlayerScenarioCollision();
 
         player.hp =
             Number(data.player.hp) ||
@@ -3391,6 +6907,8 @@ function hideGameMenu() {
 function resetGame() {
     deleteSaveGame();
 
+    ensurePlayerEnergy();
+
     player.x = W / 2;
     player.y = H / 2;
 
@@ -3463,7 +6981,10 @@ function dash() {
     dy /= len;
 
     player.x = clamp(player.x + dx * 115, 28, W - 28);
-    player.y = clamp(player.y + dy * 115, 95, H - 28);
+    player.y = clamp(player.y + dy * 115, 125, H - 28);
+
+    // O dash também respeita o cenário.
+    resolvePlayerScenarioCollision();
 
     player.invincible = 18;
     player.dashCooldown = 100;
@@ -4028,4 +7549,161 @@ window.addEventListener("load", () => {
     }, 500);
 });
 
+
+// ============================================================
+// LOOP PRINCIPAL DO JOGO
+// ============================================================
+
+function loop() {
+
+    // Atualiza apenas quando o jogo está em andamento.
+    if (started && !paused && !gameOver) {
+        update();
+    }
+
+    // O desenho continua acontecendo mesmo no menu/pausa.
+    draw();
+
+    requestAnimationFrame(loop);
+}
+
 loop();
+
+
+
+// ============================================================
+// CONTROLES DO MENU DE EVOLUÇÃO
+// ============================================================
+
+function selectUpgradeFromPosition(x, y) {
+
+    if (!upgradeMenuOpen)
+        return false;
+
+    const panelW =
+        Math.min(
+            520,
+            W - 30
+        );
+
+    const panelH = 390;
+
+    const panelX =
+        (W - panelW) / 2;
+
+    const panelY =
+        Math.max(
+            85,
+            (H - panelH) / 2
+        );
+
+    const buttonW =
+        (panelW - 45) / 2;
+
+    const buttonH = 105;
+
+    const buttons = [
+
+        {
+            x: panelX + 15,
+            y: panelY + 90
+        },
+
+        {
+            x: panelX + 30 + buttonW,
+            y: panelY + 90
+        },
+
+        {
+            x: panelX + 15,
+            y: panelY + 205
+        },
+
+        {
+            x: panelX + 30 + buttonW,
+            y: panelY + 205
+        }
+    ];
+
+    for (let i = 0; i < buttons.length; i++) {
+
+        const b = buttons[i];
+
+        if (
+            x >= b.x &&
+            x <= b.x + buttonW &&
+            y >= b.y &&
+            y <= b.y + buttonH
+        ) {
+            applyUpgrade(i + 1);
+            return true;
+        }
+    }
+
+    return false;
+}
+
+
+// Teclado
+addEventListener(
+    "keydown",
+    function(e) {
+
+        if (!upgradeMenuOpen)
+            return;
+
+        if (e.key === "1")
+            applyUpgrade(1);
+
+        else if (e.key === "2")
+            applyUpgrade(2);
+
+        else if (e.key === "3")
+            applyUpgrade(3);
+
+        else if (e.key === "4")
+            applyUpgrade(4);
+    }
+);
+
+
+// Toque no celular
+addEventListener(
+    "touchend",
+    function(e) {
+
+        if (!upgradeMenuOpen)
+            return;
+
+        const touch =
+            e.changedTouches[0];
+
+        if (!touch)
+            return;
+
+        const rect =
+            canvas.getBoundingClientRect();
+
+        const x =
+            (touch.clientX - rect.left) *
+            (W / rect.width);
+
+        const y =
+            (touch.clientY - rect.top) *
+            (H / rect.height);
+
+        if (
+            selectUpgradeFromPosition(
+                x,
+                y
+            )
+        ) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+    },
+    {
+        passive: false
+    }
+);
+

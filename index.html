@@ -178,6 +178,368 @@ canvas {
         display: none;
     }
 }
+
+/* TOMIOKA MENU PREMIUM */
+
+#startScreen {
+    position: fixed;
+    inset: 0;
+    z-index: 90;
+    overflow: hidden;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    background:
+        radial-gradient(
+            circle at 50% 35%,
+            rgba(14,116,144,.42),
+            transparent 34%
+        ),
+        radial-gradient(
+            circle at 50% 100%,
+            rgba(30,64,175,.24),
+            transparent 48%
+        ),
+        linear-gradient(
+            145deg,
+            #020617,
+            #071a2e 48%,
+            #020617
+        );
+
+    color: white;
+    text-align: center;
+
+    transition:
+        opacity .55s ease,
+        transform .55s ease;
+}
+
+#startScreen.hidden {
+    opacity: 0;
+    pointer-events: none;
+    transform: scale(1.04);
+}
+
+#startScreen::before,
+#startScreen::after {
+    content: "";
+    position: absolute;
+    width: 65vw;
+    height: 65vw;
+    max-width: 700px;
+    max-height: 700px;
+
+    border-radius: 50%;
+
+    border: 1px solid rgba(56,189,248,.12);
+
+    animation:
+        menuRing 8s linear infinite;
+}
+
+#startScreen::after {
+    width: 90vw;
+    height: 90vw;
+    border-color: rgba(125,211,252,.06);
+    animation-duration: 12s;
+    animation-direction: reverse;
+}
+
+.menuWaterGlow {
+    position: absolute;
+    inset: 0;
+
+    background:
+        radial-gradient(
+            ellipse at 50% 85%,
+            rgba(14,165,233,.20),
+            transparent 42%
+        );
+
+    pointer-events: none;
+}
+
+.menuWaterGlow::before,
+.menuWaterGlow::after {
+    content: "";
+    position: absolute;
+    left: -10%;
+    width: 120%;
+    height: 2px;
+
+    background: rgba(125,211,252,.14);
+
+    filter: blur(1px);
+
+    animation:
+        waterMove 5s ease-in-out infinite alternate;
+}
+
+.menuWaterGlow::before {
+    top: 72%;
+}
+
+.menuWaterGlow::after {
+    top: 78%;
+    animation-delay: -2s;
+}
+
+.menuContent {
+    position: relative;
+    z-index: 2;
+
+    width: min(430px, 88vw);
+
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+
+    animation:
+        menuAppear .8s ease both;
+}
+
+.menuLogo {
+    margin-bottom: 28px;
+}
+
+.menuWave {
+    font-size: clamp(34px, 8vw, 58px);
+
+    filter:
+        drop-shadow(0 0 18px rgba(56,189,248,.7));
+
+    animation:
+        waveFloat 3s ease-in-out infinite;
+}
+
+.menuTitle {
+    margin-top: 4px;
+
+    font-size: clamp(15px, 3vw, 22px);
+
+    letter-spacing: 7px;
+
+    color: #bae6fd;
+
+    text-shadow:
+        0 0 15px rgba(56,189,248,.45);
+}
+
+.menuTitle strong {
+    display: block;
+
+    margin-top: 2px;
+
+    font-size: clamp(38px, 8vw, 68px);
+
+    letter-spacing: 4px;
+
+    color: #ffffff;
+
+    text-shadow:
+        0 0 10px rgba(125,211,252,.8),
+        0 0 35px rgba(14,165,233,.45);
+}
+
+.menuLine {
+    width: 170px;
+    height: 2px;
+
+    margin: 13px auto 10px;
+
+    background:
+        linear-gradient(
+            90deg,
+            transparent,
+            #67e8f9,
+            transparent
+        );
+
+    box-shadow:
+        0 0 12px rgba(34,211,238,.65);
+}
+
+.menuSubtitle {
+    color: #94a3b8;
+
+    font-size: 13px;
+
+    letter-spacing: 2px;
+}
+
+#menuButtons {
+    width: min(330px, 82vw);
+
+    display: flex;
+    flex-direction: column;
+
+    gap: 10px;
+}
+
+.menuButton {
+    position: relative;
+
+    width: 100%;
+
+    min-height: 50px;
+
+    border-radius: 15px;
+
+    border: 1px solid rgba(125,211,252,.32);
+
+    color: #f8fafc;
+
+    font-size: 15px;
+    font-weight: bold;
+
+    letter-spacing: 1px;
+
+    background:
+        linear-gradient(
+            135deg,
+            rgba(15,23,42,.94),
+            rgba(8,47,73,.90)
+        );
+
+    box-shadow:
+        0 8px 25px rgba(0,0,0,.25),
+        inset 0 1px rgba(255,255,255,.08);
+
+    transition:
+        transform .15s ease,
+        border-color .15s ease,
+        box-shadow .15s ease;
+}
+
+.menuButton::before {
+    content: "";
+
+    position: absolute;
+
+    left: 12px;
+    right: 12px;
+    top: 0;
+
+    height: 1px;
+
+    background:
+        linear-gradient(
+            90deg,
+            transparent,
+            rgba(186,230,253,.45),
+            transparent
+        );
+}
+
+.menuButton:active {
+    transform: scale(.96);
+}
+
+.mainButton {
+    min-height: 58px;
+
+    font-size: 17px;
+
+    border-color:
+        rgba(103,232,249,.8);
+
+    background:
+        linear-gradient(
+            135deg,
+            #075985,
+            #1d4ed8
+        );
+
+    box-shadow:
+        0 0 25px rgba(14,165,233,.25),
+        inset 0 1px rgba(255,255,255,.18);
+}
+
+.continueButton {
+    background:
+        linear-gradient(
+            135deg,
+            #164e63,
+            #0f766e
+        );
+
+    border-color:
+        rgba(45,212,191,.55);
+}
+
+.danger {
+    background:
+        rgba(69,10,10,.70);
+
+    border-color:
+        rgba(248,113,113,.35);
+
+    color: #fecaca;
+}
+
+.menuFooter {
+    display: flex;
+
+    justify-content: center;
+    gap: 12px;
+
+    flex-wrap: wrap;
+
+    margin-top: 24px;
+
+    color: #64748b;
+
+    font-size: 9px;
+
+    letter-spacing: 1px;
+}
+
+@keyframes menuAppear {
+    from {
+        opacity: 0;
+        transform: translateY(18px) scale(.97);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+@keyframes waveFloat {
+    0%, 100% {
+        transform: translateY(0);
+    }
+
+    50% {
+        transform: translateY(-7px);
+    }
+}
+
+@keyframes waterMove {
+    from {
+        transform: translateX(-5%) rotate(-1deg);
+    }
+
+    to {
+        transform: translateX(5%) rotate(1deg);
+    }
+}
+
+@keyframes menuRing {
+    from {
+        transform: rotate(0deg) scale(1);
+    }
+
+    to {
+        transform: rotate(360deg) scale(1.04);
+    }
+}
+
+
 </style>
 
 <style>
@@ -273,36 +635,57 @@ canvas {
 </div>
 
 <div id="startScreen" class="hidden">
-    <h1>🌊 TOMIOKA</h1>
 
-    <p>
-        Sobreviva. Evolua. Derrote todos.
-    </p>
+    <div class="menuWaterGlow"></div>
 
-    <div id="menuButtons">
+    <div class="menuContent">
 
-        <button
-            id="continueButton"
-            class="menuButton"
-            style="display:none">
-            ▶ CONTINUAR
-        </button>
+        <div class="menuLogo">
+            <div class="menuWave">🌊</div>
 
-        <button
-            id="startButton"
-            class="menuButton">
-            ⚔ NOVO JOGO
-        </button>
+            <div class="menuTitle">
+                AVENTURA
+                <strong>TOMIOKA</strong>
+            </div>
 
-        <button
-            id="deleteSaveButton"
-            class="menuButton danger">
-            🗑 APAGAR SAVE
-        </button>
+            <div class="menuLine"></div>
+
+            <p class="menuSubtitle">
+                Respire. Lute. Evolua.
+            </p>
+        </div>
+
+        <div id="menuButtons">
+
+            <button
+                id="continueButton"
+                class="menuButton continueButton"
+                style="display:none">
+                ▶ CONTINUAR
+            </button>
+
+            <button
+                id="startButton"
+                class="menuButton mainButton">
+                ⚔ NOVO JOGO
+            </button>
+
+            <button
+                id="deleteSaveButton"
+                class="menuButton danger">
+                🗑 APAGAR SAVE
+            </button>
+
+        </div>
+
+        <div class="menuFooter">
+            <span>🌊 AVENTURA TOMIOKA</span>
+            <span>v1.0</span>
+            <span>CRIADO POR JOÃO LUCAS</span>
+        </div>
 
     </div>
 </div>
-
 
 <div id="rotate-screen">
     <div class="box">

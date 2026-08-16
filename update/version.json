@@ -1,8 +1,11 @@
 {
-  "version": "1.0.0",
-  "name": "Tomioka",
-  "apk": "https://github.com/luc58797-art/Tomioka/releases/latest/download/Tomioka.apk",
+  "version": "1.1.0",
+  "apk": "https://github.com/luc58797-art/Tomioka/releases/download/v1.1.0/Tomioka.apk",
   "changelog": [
-    "Primeira versão pública do Tomioka"
+    "Nova versão do jogo",
+    "Sistema da loja",
+    "Novos sprites",
+    "Melhorias no mapa e fases",
+    "Correções de controles e interface"
   ]
 }
